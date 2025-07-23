@@ -78,6 +78,19 @@ def check_quality_flags_goes(ds):
     # Check each channel individually - exit early if bad quality found
     for i in range(1, 17):
         if (ds[f'DQF_C{i:02d}'] > 0).any().item():
+            logger.info(f"Did not pass quality check for channel DQF_C{i:02d}.")
+            return False
+        
+    # If we get here, all channels passed the quality check
+    # Also check whether there are any NaN or inf values in the dataset
+    if np.isnan(ds.x).any() or np.isinf(ds.x).any() or \
+       np.isnan(ds.y).any() or np.isinf(ds.y).any():
+        logger.info("Dataset contains NaN or inf values in x or y.")
+        return False
+    # Check if any channels have NaN values
+    for channel in ds.data_vars:
+        if np.isnan(ds[channel].values).any():
+            logger.info(f"Dataset contains NaN values in channel {channel}.")
             return False
     return True
 
@@ -105,23 +118,37 @@ def check_quality_flags_msg(ds, min_valid_fraction=0.999):
             'VIS008',
             'WV_062',
             'WV_073']
-    # create a mask where the latitude value is inf
-    mask_lat = ~np.isinf(ds.latitude)
-    mask_lon = ~np.isinf(ds.longitude)
-    # combine both masks to find all points with valid lat/lon values
-    mask = mask_lat & mask_lon
-    valid_pixels = np.count_nonzero(mask)
+    # OPTION 1:
+    # # create a mask where the latitude value is inf
+    # mask_lat = ~np.isinf(ds.latitude)
+    # mask_lon = ~np.isinf(ds.longitude)
+    # # combine both masks to find all points with valid lat/lon values
+    # mask = mask_lat & mask_lon
+    # valid_pixels = np.count_nonzero(mask)
+    
+    # # loop through each channel to check for NaN values
+    # for channel in channels:
+    #     # Check for NaN only where mask is True, i.e. where the lat/lon values are valid
+    #     nan_in_valid_region = np.isnan(ds[channel].values[mask])
+    #     nan_fraction = np.count_nonzero(nan_in_valid_region) / valid_pixels
+
+    #     # If the fraction of NaN values exceeds the allowed threshold, return False
+    #     if nan_fraction > (1 - min_valid_fraction):
+    #         return False
+    # # If we get here, all channels passed the quality check
+    # return True
+
+    # OPTION 2:
+    # check if any coordinates are NaN or inf
+    if np.isnan(ds.latitude).any() or np.isinf(ds.latitude).any() or \
+       np.isnan(ds.longitude).any() or np.isinf(ds.longitude).any():
+        return False
     
     # loop through each channel to check for NaN values
     for channel in channels:
-        # Check for NaN only where mask is True, i.e. where the lat/lon values are valid
-        nan_in_valid_region = np.isnan(ds[channel].values[mask])
-        nan_fraction = np.count_nonzero(nan_in_valid_region) / valid_pixels
-
-        # If the fraction of NaN values exceeds the allowed threshold, return False
-        if nan_fraction > (1 - min_valid_fraction):
+        # check if any values in the channel are NaN
+        if np.isnan(ds[channel].values).any():
             return False
-    # If we get here, all channels passed the quality check
     return True
 
 def check_quality_flags_himawari(ds, min_valid_fraction=0.999):
@@ -153,23 +180,37 @@ def check_quality_flags_himawari(ds, min_valid_fraction=0.999):
             'B14',
             'B15',
             'B16',]
-    # create a mask where the latitude value is inf
-    mask_lat = ~np.isinf(ds.latitude)
-    mask_lon = ~np.isinf(ds.longitude)
-    # combine both masks to find all points with valid lat/lon values
-    mask = mask_lat & mask_lon
-    valid_pixels = np.count_nonzero(mask)
+    
+    ## OPTION 1:
+    # # create a mask where the latitude value is inf
+    # mask_lat = ~np.isinf(ds.latitude)
+    # mask_lon = ~np.isinf(ds.longitude)
+    # # combine both masks to find all points with valid lat/lon values
+    # mask = mask_lat & mask_lon
+    # valid_pixels = np.count_nonzero(mask)
+    # loop through each channel to check for NaN values
+    # for channel in channels:
+    #     # Check for NaN only where mask is True, i.e. where the lat/lon values are valid
+    #     nan_in_valid_region = np.isnan(ds[channel].values[mask])
+    #     nan_fraction = np.count_nonzero(nan_in_valid_region) / valid_pixels
+
+    #     # If the fraction of NaN values exceeds the allowed threshold, return False
+    #     if nan_fraction > (1 - min_valid_fraction):
+    #         return False
+    # # If we get here, all channels passed the quality check
+    # return True
+
+    ## OPTION 2:
+    # check if any coordinates are NaN or inf
+    if np.isnan(ds.latitude).any() or np.isinf(ds.latitude).any() or \
+       np.isnan(ds.longitude).any() or np.isinf(ds.longitude).any():
+        return False
     
     # loop through each channel to check for NaN values
     for channel in channels:
-        # Check for NaN only where mask is True, i.e. where the lat/lon values are valid
-        nan_in_valid_region = np.isnan(ds[channel].values[mask])
-        nan_fraction = np.count_nonzero(nan_in_valid_region) / valid_pixels
-
-        # If the fraction of NaN values exceeds the allowed threshold, return False
-        if nan_fraction > (1 - min_valid_fraction):
+        # check if any values in the channel are NaN
+        if np.isnan(ds[channel].values).any():
             return False
-    # If we get here, all channels passed the quality check
     return True
 
 class CenterWeightedCropDatasetEditor():
