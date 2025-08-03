@@ -5,9 +5,127 @@ import tempfile
 import zipfile
 from satpy import Scene
 import pathlib
+import pandas as pd
 
 import warnings
 warnings.simplefilter("ignore")
+
+
+# HIMAWARI wavelengths in nanometers
+HIMAWARI_WAVELENGTHS = {
+    "B01": {
+        "reso_og": 1000,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 450.0,
+        "center_wavelength": 470.0,
+        "max_wavelength": 490.7,
+    },
+    "B02": {
+        "reso_og": 500,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 495.1,
+        "center_wavelength": 510.0,
+        "max_wavelength": 525.9,
+    },
+    "B03": {
+        "reso_og": 1000,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 599.1,
+        "center_wavelength": 640.0,
+        "max_wavelength": 680.6,
+    },
+    "B04": {
+        "reso_og": 2000,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 839.1,
+        "center_wavelength": 860.0,
+        "max_wavelength": 873.5,
+    },
+    "B05": {
+        "reso_og": 2000,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 1589.6,
+        "center_wavelength": 1600.0,
+        "max_wavelength": 1630.3,
+    },
+    "B06": {
+        "reso_og": 2000,
+        "band_type": "TOA Reflectance",
+        "min_wavelength": 2235.1,
+        "center_wavelength": 2300.0,
+        "max_wavelength": 2278.9,
+    },
+    "B07": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 3784.6,
+        "center_wavelength": 3900.0,
+        "max_wavelength": 3985.0,
+    },
+    "B08": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 5827.5,
+        "center_wavelength": 6200.0,
+        "max_wavelength": 6648.9,
+    },
+    "B09": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 6739.0,
+        "center_wavelength": 6900.0,
+        "max_wavelength": 7140.3,
+    },
+    "B10": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 7253.7,
+        "center_wavelength": 7300.0,
+        "max_wavelength": 7440.5,
+    },
+    "B11": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 8404.8,
+        "center_wavelength": 8600.0,
+        "max_wavelength": 8776.6,
+    },
+    "B12": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 9446.4,
+        "center_wavelength": 9600.0,
+        "max_wavelength": 9823.2,
+    },
+    "B13": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 10193.7,
+        "center_wavelength": 10400.0,
+        "max_wavelength": 10612.3,
+    },
+    "B14": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 10909.9,
+        "center_wavelength": 11200.0,
+        "max_wavelength": 11576.8,
+    },
+    "B15": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 11900.5,
+        "center_wavelength": 12400.0,
+        "max_wavelength": 12865.0,
+    },
+    "B16": {
+        "reso_og": 2000,
+        "band_type": "TOA Normalised Brightness Temperature",
+        "min_wavelength": 13003.9,
+        "center_wavelength": 13300.0,
+        "max_wavelength": 13564.8,
+    },
+}
 
 def random_date(start, end):
     """
@@ -310,3 +428,190 @@ def read_zipped_msg(filename, channels=None):
         msg_ds = scn.to_xarray().load()
 
     return msg_ds
+
+
+def encode_and_clip(da, min, max, target_dtype, chunksizes={}, **encoding_kwargs):
+    # Drop any existing encoding
+    da = da.reset_encoding()
+
+    input_type = da.dtype.type
+    da.attrs.update(valid_range=[input_type(min), input_type(max)])
+    da.encoding.update(encoding_attrs(da.valid_range, input_type, target_dtype))
+    chunks = [chunksizes[dim] if dim in chunksizes else da[dim].size for dim in da.dims]
+    da.encoding.update(dict(chunksizes=chunks, preferred_chunks=chunksizes))
+    da.encoding.update(encoding_kwargs)
+    for enc_key in da.encoding:
+        _ = da.attrs.pop(enc_key, None)
+    da.data = np.clip(da.data, *da.valid_range)
+
+    return da
+
+def encoding_attrs(valid_range, input_dtype, target_dtype):
+    valid_range = np.array(valid_range, dtype=input_dtype)
+    range = valid_range.max() - valid_range.min()
+    max_value = np.iinfo(target_dtype).max
+    min_value = np.iinfo(target_dtype).min
+
+    if np.issubdtype(target_dtype, np.unsignedinteger):
+        return dict(
+            scale_factor=input_dtype(range / (max_value - 1)),
+            add_offset=input_dtype(-valid_range.min()),
+            _FillValue=max_value,
+            dtype=str(target_dtype.__name__), 
+        )
+    elif np.issubdtype(target_dtype, np.integer):
+        return dict(
+            scale_factor=input_dtype(range / max_value),
+            add_offset=input_dtype(-valid_range.min()),
+            _FillValue=min_value,
+            dtype=str(target_dtype.__name__), 
+        )
+    
+
+
+def get_satellite_viewing_angles(
+    lat: np.ndarray,
+    lon: np.ndarray,
+    sat_lat: float,
+    sat_lon: float,
+    sat_alt: float,  # in km
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calculate satellite zenith and azimuth angles.
+
+    Satellite zenith angle measures the angle from vertical that an observation
+    is made at the surface. 0 means that the satellite is directly overhead. 90
+    means that the surface point is on the horizon of the satellite view.
+
+    Satellite azimuth angle measures the angle from North from the surface point
+    to the satellite, measured clockwise. 0 is due N, 90 is E, 180 is S and 270
+    is W.
+
+    Parameters
+    ----------
+    lat : np.ndarray
+        latitudes of surface point in degrees
+    lon : np.ndarray
+        longitudes of surface point in degrees
+    sat_lat : float, optional
+        latitude of sub-satellite point in degrees, by default 0
+    sat_lon : float, optional
+        longitude of sub-satellite point in degrees, by default 0
+    sat_alt : float, optional
+        altitude of satellite in km, by default 35_793 (geostationary orbit
+        height over average earth radius)
+
+    Returns
+    -------
+    tuple[float, float]
+        satellite zenith and azimuth angles in degrees
+    """
+    # TODO test for inf / nan coordinates
+    # Approximate spherical Earth so use radius of 6,371 km
+    Re = 6_371
+    Rgeo = sat_alt + Re
+
+    # Caclulate the beta angle
+    cos_beta = np.cos(np.radians(lat - sat_lat)) * np.cos(np.radians(lon - sat_lon))
+    sin_beta = np.sin(np.arccos(cos_beta))
+
+    # Calculate satellite zenith angle
+    geo_dist = (
+        Rgeo**2 + Re**2 - 2 * Rgeo * Re * cos_beta
+    ) ** 0.5  # distance from surface to satellite
+    sin_theta = (Rgeo * sin_beta) / geo_dist
+    zenith_angle = np.degrees(np.arcsin(sin_theta))
+
+    # Find where satellite-surface path intersects the earth and make these > 90
+    zenith_angle = np.where(
+        geo_dist**2 < (Rgeo**2 - Re**2), zenith_angle, 180 - zenith_angle
+    )
+
+    # Calculate satellite azimuthal angle
+    x_sat = np.cos(np.radians(lat - sat_lat)) * np.sin(np.radians(lon - sat_lon))
+    y_sat = np.sin(np.radians(lat - sat_lat))
+    azimuth_angle = np.where(
+        np.isfinite(x_sat), np.degrees(np.arctan2(x_sat, y_sat)) % 360, np.nan
+    )
+
+    return zenith_angle, azimuth_angle
+
+def get_sza_and_azi(
+    date: datetime, lat: np.ndarray, lon: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the solar zenith angle at a specific time/lat/lon
+
+    Parameters
+    ----------
+    date : datetime | array of datetime like
+        Dates of the points
+    lat : np.ndarray
+        Latitudes
+    lon : np.ndarray
+        Longitudes
+
+    Returns
+    -------
+    sza: np.ndarray
+        The solar zenith angle in degrees, where 0 is directly above, 90 is on
+        the horizon and 180 is directly below
+    saa: np.ndarray
+        The solar azimuth angle in degrees, clockwise from North
+    """
+    # TODO test for inf / nan coordinates
+    try:
+        date = pd.DatetimeIndex(date)
+    except TypeError:
+        date = pd.DatetimeIndex([date])
+    day_of_year = date.dayofyear.to_numpy()
+    hour_of_day = (date.hour + date.minute / 60 + date.second / 60 / 60).to_numpy()
+
+    # calculate approx time equation as angle for 365 day year
+    equation_of_time_approx = 2.0 * np.pi * day_of_year / 365.0
+
+    # calculate the solar declination for the given day
+    # the declination varies due to the fact that the earth rotation axis
+    # is not perpendicular to the ecliptic plane
+    solar_declination = (
+        0.006918
+        - 0.399912 * np.cos(equation_of_time_approx)
+        - 0.006758 * np.cos(2.0 * equation_of_time_approx)
+        - 0.002697 * np.cos(3.0 * equation_of_time_approx)
+        + 0.070257 * np.sin(equation_of_time_approx)
+        + 0.000907 * np.sin(2.0 * equation_of_time_approx)
+        + 0.001480 * np.sin(3.0 * equation_of_time_approx)
+    )
+
+    # equation of time, used to compensate for the earth's elliptical orbit
+    # around the sun and its axial tilt when calculating solar time
+    # eqt is the correction in hours
+    equation_of_time = 2.0 * np.pi * day_of_year / 366.0
+    equation_of_time = (
+        0.0072 * np.cos(equation_of_time)
+        - 0.0528 * np.cos(2.0 * equation_of_time)
+        - 0.0012 * np.cos(3.0 * equation_of_time)
+        - 0.1229 * np.sin(equation_of_time)
+        - 0.1565 * np.sin(2.0 * equation_of_time)
+        - 0.0041 * np.sin(3.0 * equation_of_time)
+    )
+
+    # calculate the solar zenith angle
+    omega = np.radians(
+        (360.0 / 24.0) * (hour_of_day + lon / 15.0 + equation_of_time - 12.0)
+    )
+    sunh = np.sin(solar_declination) * np.sin(np.radians(lat)) + np.cos(
+        solar_declination
+    ) * np.cos(np.radians(lat)) * np.cos(omega)
+
+    solar_elevation = np.arcsin(np.clip(sunh, -1, 1))
+    solar_zenith_angle = np.pi / 2.0 - solar_elevation
+
+    # Solar azimuth added by yaswant
+    azimuth = (
+        np.sin(solar_declination) * np.cos(np.radians(lat))
+        - np.cos(solar_declination) * np.sin(np.radians(lat)) * np.cos(omega)
+    ) / np.cos(np.pi / 2.0 - solar_zenith_angle)
+
+    solar_azimuth_angle = np.arccos(np.clip(azimuth, -1, 1))
+
+    return np.degrees(solar_zenith_angle), np.degrees(solar_azimuth_angle)
+

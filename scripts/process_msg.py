@@ -27,6 +27,7 @@ CHANNELS = [
             'WV_073'
         ]
 
+# TODO: This is outdated and needs to tbe replaced
 def reduce_file_size(ds, compression_level=9):
     """
     Reduce the file size of the dataset by converting to float32 and compressing.

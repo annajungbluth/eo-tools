@@ -20,35 +20,39 @@ from satpy import Scene
 
 from pyproj import Proj
 from scipy.interpolate import make_splrep
+from process_utils import HIMAWARI_WAVELENGTHS, encode_and_clip, get_satellite_viewing_angles, get_sza_and_azi
 
-def reduce_file_size(ds, compression_level=9):
-    """
-    Reduce the file size of the dataset by converting to float32 and compressing.
+def reprocess_himawari(ds, time, chunksize, **encoding_kwargs):
+    # Load and stack data vars and apply quality flags
+    data = xr.concat((ds[var] for var in HIMAWARI_WAVELENGTHS.keys()), dim="channel").assign_coords(channel=("channel", list(HIMAWARI_WAVELENGTHS.keys())))
     
-    Args:
-        ds (xarray.Dataset): The dataset to reduce.
-        compression_level (int): Compression level for saving the dataset.
+    new_ds = data.to_dataset(name="data").assign_attrs(ds.attrs).drop_vars(["latitude", "longitude"])
+    new_ds = new_ds.assign_coords(t=time)
+    new_ds["data"] = encode_and_clip(new_ds.data, 0, 400, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
     
-    Returns:
-        xarray.Dataset: Reduced dataset.
-    """
-    # Reduce file size by converting to float32
-    ds = ds.astype("float32")
-    # Remove unnecessary variables
-    ds = ds.drop_vars(["FLDK"])
+    new_ds["latitude"] = (("y", "x"), ds.latitude.values.astype(np.float32))
+    new_ds["latitude"] = encode_and_clip(new_ds.latitude, -90, 90, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
 
-    encoding = {}
+    new_ds["longitude"] = (("y", "x"), ds.longitude.values.astype(np.float32))
+    new_ds["longitude"] = encode_and_clip(new_ds.longitude, -180, 180, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
 
-    # Add data variable compression
-    for var in ds.data_vars:
-        if ds[var].dtype in ['float64', 'float32']:
-            encoding[var] = {'dtype': 'float32', 'zlib': True, 'complevel': compression_level, 'shuffle': True}
-    # Add coordinate compression
-    for coord in ds.coords:
-        if ds[coord].dtype in ['float64', 'float32']:
-            encoding[coord] = {'dtype': 'float32', 'zlib': True, 'complevel': compression_level, 'shuffle': True}
+    zenith, azimuth = get_satellite_viewing_angles(
+        lat=new_ds.latitude,
+        lon=new_ds.longitude,
+        sat_lat=ast.literal_eval(ds.B01.orbital_parameters)["projection_latitude"],
+        sat_lon=ast.literal_eval(ds.B01.orbital_parameters)["projection_longitude"],
+        sat_alt=ast.literal_eval(ds.B01.orbital_parameters)["projection_altitude"]
+        / 1e3,  # convert to km
+    )
+    new_ds["sat_angle"] = (("angle", "y", "x"), np.stack([zenith.astype(np.float32), azimuth.astype(np.float32)], axis=0))
+    new_ds["sat_angle"] = encode_and_clip(new_ds.sat_angle, 0,360, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
 
-    return ds, encoding
+    time = pd.Timestamp(time).to_pydatetime()
+    zenith, azimuth = get_sza_and_azi(date=time, lat=new_ds.latitude.values, lon=new_ds.longitude.values)
+    new_ds["solar_angle"] = (("angle", "y", "x"), np.stack([zenith.astype(np.float32), azimuth.astype(np.float32)], axis=0))
+    new_ds["solar_angle"] = encode_and_clip(new_ds.solar_angle, 0,360, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    return new_ds
 
 def get_ahi_proj(dataset: xr.Dataset) -> Proj:
     """
@@ -75,8 +79,8 @@ def get_ahi_x_y(
     p = get_ahi_proj(dataset)
     x, y = p(lon, lat)
     return (
-        x / ast.literal_eval(dataset.B01.orbital_parameters).get('projection_altitude'),
-        y / ast.literal_eval(dataset.B01.orbital_parameters).get('projection_altitude'),
+        x,
+        y,
     )
 
 def get_himawari_image(
@@ -158,20 +162,27 @@ if __name__ == "__main__":
     logger.info(f"Extracting patch ...")
     ds_patch = get_himawari_patch(lat, lon, ds, args.patch_size)
 
-    # Reduce file size
-    ds_patch, encoding = reduce_file_size(ds_patch, compression_level=9)
+    # Reprocess file:
+    logger.info(f"Reprocessing patch ...")
+    new_ds = reprocess_himawari(
+        ds=ds_patch,
+        time=pd.to_datetime(row['start']),
+        chunksize=64,
+        zlib=True, 
+        shuffle=True, 
+        complevel=5) # default in the reprocessing script
 
     # Save the patched dataset with the specified encoding
     logger.info(f"Saving patched dataset to {save_file_name} ...")
-    ds_patch.to_netcdf(save_file_name, encoding=encoding)
+    new_ds.to_netcdf(save_file_name, engine="netcdf4")
 
-    # Upload to GCP
+    # # Upload to GCP
     logger.info(f"Uploading file to GCP...")
 
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "/home/users/annaju/esl-3d-clouds-extremes-baa3a73d57dc.json"  # TODO: Add credentials
     storage_client = storage.Client()
     bucket = storage_client.get_bucket("2025-esl-3dclouds-extremes-datasets")
-    blob = bucket.blob(f'pre-training/cyclones/himawari/{SID}/{patch_filename}')
+    blob = bucket.blob(f'pre-training-reprocessed/cyclones/himawari/{SID}/{patch_filename}')
     blob.upload_from_filename(f"{save_path}/{patch_filename}")
 
     # remove local file
