@@ -16,6 +16,7 @@ import os
 
 import s3fs
 
+# TODO: This is outdated and needs to tbe replaced
 def reduce_file_size(ds, compression_level=9):
     """
     Reduce the file size of the dataset by converting to float32 and compressing.
@@ -109,7 +110,7 @@ def download_himawari(dt, patch_size, fov_radius):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", type=int, required=True, help="Random seed for reproducibility")
+    parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
     parser.add_argument("--start", type=str, default="2015-07-07", help="Start date in YYYY-MM-DD format")
     parser.add_argument("--end", type=str, default="2022-12-12", help="End date in YYYY-MM-DD format")
     parser.add_argument("--patch_size", type=int, default=1024, help="Size of the patch to crop from the dataset")
@@ -119,6 +120,7 @@ if __name__ == "__main__":
 
     # Set random seed for reproducibility
     np.random.seed(args.seed)
+    logger.info(f"Using random seed: {args.seed}")
 
     # Create output directory if it doesn't exist
     save_path = pathlib.Path("/work/scratch-nopw2/annaju/himawari_temp/")
@@ -147,13 +149,19 @@ if __name__ == "__main__":
         patch_filename = f"{dt_str}_patch_{xmin}_{ymin}.nc"
         patch_ds.to_netcdf(f"{save_path}/{patch_filename}", encoding=encoding)
 
+        # try loading the file to check if it was saved correctly
+        try:
+            xr.open_dataset(f"{save_path}/{patch_filename}")
+            logger.info(f"Patch saved successfully: {patch_filename}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load saved patch file: {patch_filename}. Error: {e}")
+        
         # Upload to GCP
         logger.info(f"Uploading file to GCP...")
-
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "/home/users/annaju/esl-3d-clouds-extremes-baa3a73d57dc.json"  # TODO: Add credentials
         storage_client = storage.Client()
         bucket = storage_client.get_bucket("2025-esl-3dclouds-extremes-datasets")
-        blob = bucket.blob(f'pre-training/himawari/l1b/{patch_filename}')
+        blob = bucket.blob(f'pre-training/himawari/l1b-update/{patch_filename}')
         blob.upload_from_filename(f"{save_path}/{patch_filename}")
 
         # remove local file

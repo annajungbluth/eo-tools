@@ -27,6 +27,7 @@ CHANNELS = [
             'WV_073'
         ]
 
+# TODO: This is outdated and needs to tbe replaced
 def reduce_file_size(ds, compression_level=9):
     """
     Reduce the file size of the dataset by converting to float32 and compressing.
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     save_path = pathlib.Path("/work/scratch-nopw2/annaju/msg_temp/")
     save_path.mkdir(parents=True, exist_ok=True)
 
-    df_selected_files = pd.read_csv("msg-sample-50000.csv")
+    df_selected_files = pd.read_csv("msg-sample-1000.csv")
     # Extract relevant file and datetime based on provided number
     selected_file = df_selected_files.iloc[args.number]["path"]
     logger.info(f"Processing file: {selected_file}..")
@@ -121,13 +122,19 @@ if __name__ == "__main__":
         patch_filename = f"{dt_str}_patch_{xmin}_{ymin}.nc"
         patch_ds.to_netcdf(f"{save_path}/{patch_filename}", encoding=encoding)
         # TODO: Reduce the file size, at the moment, each file is 24 MB
-
+        # try loading the file to check if it was saved correctly
+        try:
+            xr.open_dataset(f"{save_path}/{patch_filename}")
+            logger.info(f"Patch saved successfully: {patch_filename}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load saved patch file: {patch_filename}. Error: {e}")
+                
         logger.info(f"Uploading file to GCP...")
 
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "/home/users/annaju/esl-3d-clouds-extremes-baa3a73d57dc.json"  # TODO: Add credentials
         storage_client = storage.Client()
         bucket = storage_client.get_bucket("2025-esl-3dclouds-extremes-datasets")
-        blob = bucket.blob(f'pre-training/msg/l1b/{patch_filename}')
+        blob = bucket.blob(f'pre-training/msg/l1b-update/{patch_filename}')
         blob.upload_from_filename(f"{save_path}/{patch_filename}")
 
         # remove local file
