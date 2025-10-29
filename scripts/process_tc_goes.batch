@@ -6,7 +6,7 @@
 #SBATCH --mem=8000
 #SBATCH --job-name=process_tc_goes
 #SBATCH -o /home/users/annaju/logs/slurm-%A_%a.o
-#SBATCH --array=0-9999
+#SBATCH --array=0-1152
 
 OFFSET=0
 

@@ -13,11 +13,52 @@ import argparse
 import os
 
 import fsspec
+import ast
 import goes2go
 from tqdm import tqdm
 
 from pyproj import Proj
 from scipy.interpolate import make_splrep
+from process_utils import GOES_WAVELENGTHS, encode_and_clip, get_satellite_viewing_angles, get_sza_and_azi, get_abi_lat_lon
+
+GOES_EAST_PROJ4 = "+proj=geos +lon_0=-75 +h=35786023 +x_0=0 +y_0=0 +sweep=x +datum=WGS84 +units=m +no_defs"
+
+goes_satellite_height = 35786023  # in meters
+goes_satellite_longitude = -75  # in degrees
+goes_satellite_latitude = 0  # in degrees
+
+def reprocess_goes(ds, time, chunksize, **encoding_kwargs):
+    # Load and stack data vars and apply quality flags
+    data = xr.concat((ds[var] for var in GOES_WAVELENGTHS.keys()), dim="channel").assign_coords(channel=("channel", list(GOES_WAVELENGTHS.keys())))
+
+    new_ds = data.to_dataset(name="data").assign_attrs(ds.attrs)
+    new_ds = new_ds.assign_coords(t=time)
+    new_ds["data"] = encode_and_clip(new_ds.data, 0, 400, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    lats, lons = get_abi_lat_lon(ds)
+
+    new_ds["latitude"] = (("y", "x"), lats.astype(np.float32))
+    new_ds["latitude"] = encode_and_clip(new_ds.latitude, -90, 90, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    new_ds["longitude"] = (("y", "x"), lons.astype(np.float32))
+    new_ds["longitude"] = encode_and_clip(new_ds.longitude, -180, 180, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    zenith, azimuth = get_satellite_viewing_angles(
+        lat=new_ds.latitude,
+        lon=new_ds.longitude,
+        sat_lat=goes_satellite_latitude,
+        sat_lon=goes_satellite_longitude,
+        sat_alt=goes_satellite_height / 1e3,  # convert to km
+    )
+    new_ds["sat_angle"] = (("angle", "y", "x"), np.stack([zenith.astype(np.float32), azimuth.astype(np.float32)], axis=0))
+    new_ds["sat_angle"] = encode_and_clip(new_ds.sat_angle, 0,360, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    time = pd.Timestamp(time).to_pydatetime()
+    zenith, azimuth = get_sza_and_azi(date=time, lat=new_ds.latitude.values, lon=new_ds.longitude.values)
+    new_ds["solar_angle"] = (("angle", "y", "x"), np.stack([zenith.astype(np.float32), azimuth.astype(np.float32)], axis=0))
+    new_ds["solar_angle"] = encode_and_clip(new_ds.solar_angle, 0,360, np.uint16, {"x":chunksize, "y":chunksize}, **encoding_kwargs)
+
+    return new_ds
 
 def get_abi_proj(dataset: xr.Dataset) -> Proj:
     """
@@ -82,7 +123,8 @@ def get_goes_patch(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num", type=int, required=True, help="The row to process from the GOES file")
-    parser.add_argument("--GOES_file", type=str, default="jasmin.goes_intense_ibtracs.NA-EP.list.v04r01.csv", help="Path to the file containing all IBTrACS GOES times to process")
+    # parser.add_argument("--GOES_file", type=str, default="jasmin.goes_intense_ibtracs.NA-EP.list.v04r01.csv", help="Path to the file containing all IBTrACS GOES times to process")
+    parser.add_argument("--GOES_file", type=str, default="jasmin.goes_melissa.csv", help="Path to the file containing all IBTrACS GOES times to process")    
     parser.add_argument("--patch_size", type=int, default=1024, help="Size of the patch to extract from the GOES dataset")        
     args = parser.parse_args()
     
@@ -111,28 +153,20 @@ if __name__ == "__main__":
     logger.info(f"Extracting patch ...")
     ds_patch = get_goes_patch(lat, lon, ds, args.patch_size)
 
-    # Create encoding for both data variables and coordinates to avoid warnings
-    encoding = {}
-    
-    # Handle data variables
-    for var in ds_patch.data_vars:
-        encoding[var] = {
-            "zlib": True,
-            "complevel": 9,
-            "dtype": "float32",
-        }
-    
-    # Handle coordinates (especially x, y to avoid serialization warnings)
-    for coord in ds_patch.coords:
-        if coord in ['x', 'y']:
-            encoding[coord] = {
-                "dtype": "float32",
-                "_FillValue": None  # This prevents the warning
-            }
+    # Reprocess file:
+    logger.info(f"Reprocessing patch ...")
+    new_ds = reprocess_goes(
+        ds=ds_patch,
+        time=pd.to_datetime(row['start']),
+        chunksize=64,
+        zlib=True, 
+        shuffle=True, 
+        complevel=5) # default in the reprocessing script
+
 
     # Save the patched dataset with the specified encoding
     logger.info(f"Saving patched dataset to {save_file_name} ...")
-    ds_patch.to_netcdf(save_file_name, encoding=encoding)
+    new_ds.to_netcdf(save_file_name, engine="netcdf4")
 
     # Upload to GCP
     logger.info(f"Uploading file to GCP...")
@@ -140,7 +174,7 @@ if __name__ == "__main__":
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "/home/users/annaju/esl-3d-clouds-extremes-baa3a73d57dc.json"  # TODO: Add credentials
     storage_client = storage.Client()
     bucket = storage_client.get_bucket("2025-esl-3dclouds-extremes-datasets")
-    blob = bucket.blob(f'pre-training/cyclones/goes/{SID}/{patch_filename}')
+    blob = bucket.blob(f'pre-training-reprocessed/cyclones/goes/{SID}/{patch_filename}')
     blob.upload_from_filename(f"{save_path}/{patch_filename}")
 
     # remove local file
