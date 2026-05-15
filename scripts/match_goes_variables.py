@@ -6,7 +6,7 @@ from tqdm import tqdm
 from loguru import logger
 
 
-path = './files/pretraining-test-goes-[2024].csv'
+path = './files/pretraining-test-goes-[2023-2024].csv'
 df = pd.read_csv(path)
 df_copy = df.copy()
 
@@ -44,97 +44,130 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     end_dt = query_dt + timedelta(minutes=10)
 
     # Check ABI files
-    abi_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=start_dt, 
-        end=end_dt,
-        download=False,
-        product="ABI-L1b-RadC",
-    )
+    try:
+        abi_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=start_dt, 
+            end=end_dt,
+            download=False,
+            domain='F',
+            product="ABI-L2-MCMIP",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ABI files for {query_dt}")
+        abi_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     abi_file = get_correct_file(abi_files, query_dt)
     abi_list.append(abi_file)
 
     # Cloud height at 2 km
-    acha_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-ACHA2KMF",
-    )
+    try:
+        acha_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-ACHA2KMF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ACHA files for {query_dt}")
+        acha_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acha_file = get_correct_file(acha_files, query_dt)
     acha_list.append(acha_file)
 
     # Cloud pressure at 2 km
-    achp_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-ACHP2KMF",
-    )
+    try:
+        achp_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-ACHP2KMF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ACHP files for {query_dt}")
+        achp_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     achp_file = get_correct_file(achp_files, query_dt)
     achp_list.append(achp_file)
 
     # Cloud optical depth at 2 km
-    cod_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-COD2KMF",
-    )
+    try:
+        cod_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-COD2KMF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching COD files for {query_dt}")
+        cod_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     cod_file = get_correct_file(cod_files, query_dt)
     cod_list.append(cod_file)
 
     # Cloud temperature at 2 km
-    acht_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-ACHTF",
-    )
+    try:
+        acht_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-ACHTF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ACHT files for {query_dt}")
+        acht_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acht_file = get_correct_file(acht_files, query_dt)
     acht_list.append(acht_file)
 
     # Clear sky mask at 2 km
-    acm_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-ACMF",
-    )
+    try:
+        acm_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-ACMF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ACM files for {query_dt}")
+        acm_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acm_file = get_correct_file(acm_files, query_dt)
     acm_list.append(acm_file)
 
     # Cloud phase at 2 km
-    actp_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-ACTPF",
-    )
+    try:
+        actp_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-ACTPF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching ACTP files for {query_dt}")
+        actp_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     actp_file = get_correct_file(actp_files, query_dt)
     actp_list.append(actp_file)
 
     # Cloud particle size at 2 km
-    cps_files = goes2go.goes_timerange(
-        satellite='noaa-goes16',
-        start=query_dt - timedelta(minutes=10), 
-        end=query_dt + timedelta(minutes=10),
-        download=False,
-        # domain='F',
-        product="ABI-L2-CPSF",
-    )
+    try:
+        cps_files = goes2go.goes_timerange(
+            satellite='noaa-goes16',
+            start=query_dt - timedelta(minutes=10), 
+            end=query_dt + timedelta(minutes=10),
+            download=False,
+            domain='F',
+            product="ABI-L2-CPSF",
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching CPS files for {query_dt}")
+        cps_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     cps_file = get_correct_file(cps_files, query_dt)
     cps_list.append(cps_file)
 
@@ -153,6 +186,6 @@ df_copy['actp_file'] = actp_list
 df_copy['cps_file'] = cps_list
 df_copy['all_available'] = all_available
 
-save_path = './files/pretraining-test-goes-[2024]-with-additional-variables.csv'
+save_path = './files/pretraining-test-goes-[2023-2024]-with-additional-variables.csv'
 
 df_copy.to_csv(save_path, index=False)
