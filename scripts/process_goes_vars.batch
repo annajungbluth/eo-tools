@@ -6,7 +6,7 @@
 #SBATCH --mem=8000
 #SBATCH --job-name=process_goes_vars
 #SBATCH -o /home/users/annaju/logs/slurm-%A_%a.o
-#SBATCH --array=0-1900
+#SBATCH --array=0-1792
 
 OFFSET=0
 

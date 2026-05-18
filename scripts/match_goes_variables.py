@@ -6,11 +6,14 @@ from tqdm import tqdm
 from loguru import logger
 
 
-path = './files/pretraining-test-goes-[2023-2024].csv'
+path = './files/pretraining-test-goes-cyclones-[2023-2024].csv'
 df = pd.read_csv(path)
 df_copy = df.copy()
 
 logger.info(f"Loaded dataframe with {len(df)} rows from {path}")
+
+if 'start' in df.columns:
+    df['date'] = pd.to_datetime(df['start'])
 
 def check_time_in_range(dt, query_dt, delta_minutes=2):
     start_dt = query_dt - timedelta(minutes=delta_minutes)
@@ -186,6 +189,6 @@ df_copy['actp_file'] = actp_list
 df_copy['cps_file'] = cps_list
 df_copy['all_available'] = all_available
 
-save_path = './files/pretraining-test-goes-[2023-2024]-with-additional-variables.csv'
+save_path = './files/pretraining-test-goes-cyclones-[2023-2024]-with-additional-variables.csv'
 
 df_copy.to_csv(save_path, index=False)

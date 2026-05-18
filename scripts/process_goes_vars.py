@@ -213,16 +213,24 @@ if __name__ == "__main__":
     parser.add_argument("--num", type=int, required=True, help="The row to process from the GOES file")
     parser.add_argument("--GOES_file", type=str, default="./files/pretraining-test-goes-[2023-2024]-with-additional-variables.csv", help="Path to the file containing all the files to process")    
     parser.add_argument("--patch_size", type=int, default=256, help="Size of the patch to extract from the GOES dataset")   
-    parser.add_argument("--save_path", type=str, default="/home/users/annaju/data/goes-16/", help="Path to save the processed GOES patches")    
+    parser.add_argument("--save_path", type=str, default="/home/users/annaju/data/clouds/goes-16/", help="Path to save the processed GOES patches")    
+    parser.add_argument("--cyclone", type=bool, default=False, help="Whether to add the storm_id to the name")
     args = parser.parse_args()
     
     # Load the GOES dataset
     logger.info(f"Loading GOES file from {args.GOES_file}...")
     goes_data = pd.read_csv(args.GOES_file)
+    goes_data.columns = goes_data.columns.str.lower()
 
     # Extract row to process
     row = goes_data.iloc[args.num]
 
+    if 'start' in row.keys():
+        row['date'] = pd.to_datetime(row['start'])
+
+    if 'cloud3d:storm_id' in row.keys():
+        row['sid'] = row['cloud3d:storm_id']
+    
     if row['all_available']:
         logger.info(f"Processing row {args.num} with date {row['date']} ...")
 
@@ -236,7 +244,14 @@ if __name__ == "__main__":
         # save_path = pathlib.Path(f"./{time_str}")
         save_path.mkdir(parents=True, exist_ok=True)
 
-        patch_filename = f'{time_str}_[{np.round(lat, 2)}deg_{np.round(lon, 2)}deg]_patch.nc'
+        lat_str = f"{lat:+.3f}deg"
+        lon_str = f"{lon:+.3f}deg"
+
+        if args.cyclone:
+            storm_id = row['sid']
+            patch_filename = f'{time_str}_{storm_id}_[{lat_str}_{lon_str}]_patch.nc'
+        else:
+            patch_filename = f'{time_str}_[{lat_str}_{lon_str}]_patch.nc'
         save_file_name = save_path / patch_filename
 
         abi_file = row['abi_file']
