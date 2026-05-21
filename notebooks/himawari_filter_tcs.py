@@ -21,6 +21,7 @@ from tqdm import tqdm
 from pyproj import Proj
 from scipy.interpolate import make_splrep
 from goes2go.himawari_data import _himawari_file_df
+from loguru import logger
 
 
 def get_selected_tc(
@@ -188,3 +189,15 @@ for sid in tqdm(SIDs):
 
 # Save the summary DataFrame to a CSV file
 sum_df.to_csv('jasmin.himawari_intense_ibtracs.SP-WP.list.v04r01.csv', index=False)
+
+logger.info(f"Filtering test set...")
+
+sum_df['start'] = pd.to_datetime(sum_df['start'])   
+df_subset = sum_df[sum_df['start'].dt.year.isin([2020, 2021, 2022]) & sum_df['start'].dt.day.isin([28, 29, 30, 31])]
+df_subset.columns = df_subset.columns.str.lower()
+
+logger.info(f"Reducing to 30-minute cadence...")
+df_subset = df_subset[df_subset['start'].dt.minute.isin([0, 30])]
+df_subset.to_csv('pretraining-test-himawari-cyclones-[2020-2022].csv', index=False)
+
+logger.info(f"Finished filtering test set. Final number of records: {len(df_subset)}")
