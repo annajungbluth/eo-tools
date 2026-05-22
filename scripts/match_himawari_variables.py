@@ -80,15 +80,14 @@ _himawari_bands = dict(
     )
 )
 
-def _himawari_file_df(satellite, domain, start, end, bands=None, resolutions=None, refresh=True, ignore_missing=False):
+def _himawari_file_df(satellite, domain, query_dt, bands=None, resolutions=None, refresh=True, ignore_missing=False):
     """Get list of requested GOES files as pandas.DataFrame.
 
     Parameters
     ----------
     satellite : str
     domain : str
-    start : datetime
-    end : datetime
+    query_dt : datetime
     bands : None, int, or list
         Specify the AHI channels to retrieve.
     resolutions : None, str, or list
@@ -99,25 +98,27 @@ def _himawari_file_df(satellite, domain, start, end, bands=None, resolutions=Non
     """
     params = locals()
 
-    start = pd.to_datetime(start)
-    end = pd.to_datetime(end)
-
-    DATES = pd.date_range(f"{start:%Y-%m-%d %H:00}", f"{end:%Y-%m-%d %H:00}", freq="600s")
+    query_dt = pd.to_datetime(query_dt)
 
     # List all files for each date
     # ----------------------------
     files = []
-    for DATE in DATES:
-        path = f"{satellite}/AHI-L1b-{domain}/{DATE:%Y/%m/%d/%H%M}"
-        files += _list_s3_path(path, refresh=refresh, ignore_missing=ignore_missing)
-
+    path = f"{satellite}/AHI-L1b-{domain}/{query_dt.year}/{query_dt.month:02d}/{query_dt.day:02d}/{query_dt.hour:02d}{query_dt.minute:02d}"
+    if ignore_missing is True:
+        try:
+            files += fs.ls(path, refresh=refresh)
+        except FileNotFoundError:
+            print(f"Ignored missing dir: {path}")
+    else:
+        files += fs.ls(path, refresh=refresh)
 
     # Build a table of the files
     # --------------------------
-    df = pd.DataFrame(files, columns=["file"])
-    if df.empty:
-        return df
-
+    if len(files) == 0:
+        return pd.DataFrame()  # Return an empty DataFrame if no files are found
+    else:
+        df = pd.DataFrame(files, columns=["file"])
+        
     df = df.loc[df["file"].str.contains(".DAT.bz2", na=False)].copy()
     if df.empty:
         return df
@@ -172,23 +173,19 @@ def _himawari_file_df(satellite, domain, start, end, bands=None, resolutions=Non
 
     df["time"] = pd.to_datetime(df.date + df.time, format="%Y%m%d%H%M")
 
-    # Filter by files within the requested time range
-    df = df.loc[df.time >= start].loc[df.time < end].reset_index(drop=True)
-
     for i in params:
         df.attrs[i] = params[i]
 
     return df
 
-def _himawari_l2_df(satellite, domain, start, end, level='L2', bands=None, resolutions=None, refresh=True, ignore_missing=False):
+def _himawari_l2_df(satellite, domain, query_dt, level='L2', bands=None, resolutions=None, refresh=True, ignore_missing=False):
     """Get list of requested GOES files as pandas.DataFrame.
 
     Parameters
     ----------
     satellite : str
     product : str
-    start : datetime
-    end : datetime
+    query_dt : datetime
     bands : None, int, or list
         Specify the ABI channels to retrieve.
     refresh : bool
@@ -197,43 +194,63 @@ def _himawari_l2_df(satellite, domain, start, end, level='L2', bands=None, resol
     """
     params = locals()
 
-    start = pd.to_datetime(start)
-    end = pd.to_datetime(end)
-
-    DATES = pd.date_range(f"{start:%Y-%m-%d %H:00}", f"{end:%Y-%m-%d %H:00}", freq="600s")
+    query_dt = pd.to_datetime(query_dt)
 
     # List all files for each date
     # ----------------------------
     files = []
-    for DATE in DATES:
-        if level=='L2':
-            path = f"{satellite}/AHI-{level}-FLDK-{domain}/{DATE:%Y/%m/%d/%H%M}"
-        else:
-            raise ValueError(f"Level {level} is not supported. Only 'L2' is supported.")
-        files += _list_s3_path(path, refresh=refresh, ignore_missing=ignore_missing)
+    if level=='L2':
+        path = f"{satellite}/AHI-{level}-FLDK-{domain}/{query_dt.year}/{query_dt.month:02d}/{query_dt.day:02d}/{query_dt.hour:02d}{query_dt.minute:02d}"
+    else:
+        raise ValueError(f"Level {level} is not supported. Only 'L2' is supported.")
+    files += _list_s3_path(path, refresh=refresh, ignore_missing=ignore_missing)
 
     # Build a table of the files
     # --------------------------
     df = pd.DataFrame(files, columns=["file"])
     if df.empty:
         return df
-
-    df[["satellite", "instrument", "domain", "date", "time", "xxx", "xxxx", "variable", "language"]] = (
-        df["file"]
-        .str.rsplit("/", expand=True)
-        .iloc[:, -1]
-        .str.rsplit(".", expand=True)
-        .loc[:, 0]
-        .str.rsplit("_", expand=True)
-    )
-
-    df['datetime'] = pd.to_datetime(df.date + df.time, format="%Y%j%H%M")
-
-    # Filter files by requested time range
-    # ------------------------------------
-    # Convert filename datetime string to datetime object
-    # Filter by files within the requested time range
-    df = df.loc[df.datetime >= start].loc[df.datetime < end].reset_index(drop=True)
+    if len(df['file'].iloc[0].split('/')[-1].split('.')[0].split('_')) == 9:
+        df[["satellite", "instrument", "domain", "date", "time", "xxx", "xxxx", "variable", "language"]] = (
+            df["file"]
+            .str.rsplit("/", expand=True)
+            .iloc[:, -1]
+            .str.rsplit(".", expand=True)
+            .loc[:, 0]
+            .str.rsplit("_", expand=True)
+        )
+        df['datetime'] = pd.to_datetime(df.date + df.time, format="%Y%j%H%M")
+    elif len(df['file'].iloc[0].split('/')[-1].split('.')[0].split('_')) == 10:
+        df[["satellite", "instrument", "resolution", "domain", "date", "time", "xxx", "xxxx", "variable", "language"]] = (
+            df["file"]
+            .str.rsplit("/", expand=True)
+            .iloc[:, -1]
+            .str.rsplit(".", expand=True)
+            .loc[:, 0]
+            .str.rsplit("_", expand=True)
+        )
+        df['datetime'] = pd.to_datetime(df.date + df.time, format="%Y%j%H%M")
+    elif len(df['file'].iloc[0].split('/')[-1].split('.')[0].split('_')) == 6:
+        df[["satellite-product", "version", "satellite", "start", "end", "xxx"]] = (
+            df["file"]
+            .str.rsplit("/", expand=True)
+            .iloc[:, -1]
+            .str.rsplit(".", expand=True)
+            .loc[:, 0]
+            .str.rsplit("_", expand=True)
+        )
+        satellite_mapping = {
+            'AHI-CHGT': 'HEIGHT',
+            'AHI-CMSK': 'MASK',
+            'AHI-CPHS': 'PHASE',
+        }
+        df['variable'] = df['satellite-product'].map(satellite_mapping)
+        # Remove the leading "s" and tolerate filenames with an extra trailing digit.
+        df['start'] = df['start'].astype(str).str.extract(r'(\d{14})', expand=False)
+        df['datetime'] = pd.to_datetime(df['start'], format="%Y%m%d%H%M%S", errors="coerce")
+        df = df.dropna(subset=['datetime'])
+    else:
+        raise ValueError(f"Unexpected filename format: {df['file'].iloc[0]}")
     return df
 
 
@@ -266,7 +283,7 @@ def get_correct_l2_file(files, variable):
             return var_file.iloc[0]
 
 def main():
-    path = './files/pretraining-test-himawari-[2020-2022].csv'
+    path = './files/pretraining-test-himawari-cyclones-[2020-2022].csv'
     df = pd.read_csv(path)
     df_copy = df.copy()
 
@@ -279,35 +296,31 @@ def main():
     times = pd.to_datetime(df['date'])
 
     for query_dt in tqdm(times, total=len(times)):
-        start_dt = query_dt - timedelta(minutes=60) # need to cast the net wider, since the search sometimes fails
-        end_dt = query_dt + timedelta(minutes=60)
-
         # Check AHI files
         try:
-            ahi_files_ = _himawari_file_df(
+            ahi_files = _himawari_file_df(
                 "noaa-himawari8", 
                 "FLDK", 
-                start_dt, 
-                end_dt, 
+                query_dt,
                 ignore_missing=True,
                 refresh=False,
                 ) 
         except ValueError as e:
             logger.error(f"Error fetching AHI files for {query_dt}: {e}")
-            ahi_files_ = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
-        if ahi_files_ is None or ahi_files_.empty:
-            logger.warning(f"No AHI files found around {query_dt}")
-        ahi_files = get_correct_files(ahi_files_, query_dt)
-        if ahi_files is None:
-            logger.warning(f"No AHI files found within 2 minutes of {query_dt}")
+            ahi_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
+        if ahi_files is None or ahi_files.empty:
+            logger.warning(f"No AHI files found for {query_dt}")
+        else:
+            ahi_files = get_correct_files(ahi_files, query_dt)
+            if ahi_files is None:
+                logger.warning(f"No AHI files found within 2 minutes of {query_dt}")
 
         # Cloud products at 2 km
         try:
             cloud_files_ = _himawari_l2_df(
                 "noaa-himawari8", 
                 "Clouds",
-                start_dt, 
-                end_dt, 
+                query_dt, 
                 level='L2', 
                 ignore_missing=True,
                 refresh=False,
@@ -338,7 +351,7 @@ def main():
     df_copy['phase_file'] = mapped_results.map(lambda x: x['phase_file'] if isinstance(x, dict) else None)
     df_copy['all_available'] = mapped_results.map(lambda x: x['all_available'] if isinstance(x, dict) else False)
 
-    save_path = './files/pretraining-test-himawari-[2020-2022]-with-additional-variables.csv'
+    save_path = './files/pretraining-test-himawari-cyclones-[2020-2022]-with-additional-variables.csv'
 
     df_copy.to_csv(save_path, index=False)
 

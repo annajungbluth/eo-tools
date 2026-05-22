@@ -111,14 +111,15 @@ def get_available_himawari_times(
     return df
 
 # Define the paths to the IBTrACS files
-ibtracs_wp_file = '/home/users/annaju/eo-data-prep/notebooks/IBTrACs/ibtracs.WP.list.v04r01.csv'
-ibtracs_sp_file = '/home/users/annaju/eo-data-prep/notebooks/IBTrACs/ibtracs.SP.list.v04r01.csv'
+ibtracs_wp_file = '/home/users/annaju/eo-tools/notebooks/IBTrACs/ibtracs.WP.list.v04r01.csv'
+ibtracs_sp_file = '/home/users/annaju/eo-tools/notebooks/IBTrACs/ibtracs.SP.list.v04r01.csv'
 
 df_wp = pd.read_csv(ibtracs_wp_file)
 df_sp = pd.read_csv(ibtracs_sp_file)
 
 # Filter western pacific storms
-df_wp_filtered = df_wp[df_wp.SEASON.isin([2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022])]
+df_wp_filtered = df_wp[df_wp.SEASON.isin([2020, 2021, 2022])]
+# df_wp_filtered = df_wp[df_wp.SEASON.isin([2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022])]
 df_wp_filtered = df_wp_filtered[df_wp_filtered.NATURE.isin(['TS', 'DS'])]
 df_wp_filtered = df_wp_filtered[df_wp_filtered.NAME != 'UNNAMED']
 # filter for HIMAWARI FOV
@@ -129,7 +130,8 @@ lengths = grouped.size()
 df_wp_filtered = df_wp_filtered[df_wp_filtered.SID.isin(lengths[lengths >= 8].index)]
 
 # Filter southern pacific storms
-df_sp_filtered = df_sp[df_sp.SEASON.isin([2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022])]
+df_sp_filtered = df_sp[df_sp.SEASON.isin([2020, 2021, 2022])]
+# df_sp_filtered = df_sp[df_sp.SEASON.isin([2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022])]
 df_sp_filtered = df_sp_filtered[df_sp_filtered.NATURE.isin(['TS', 'DS'])]
 df_sp_filtered = df_sp_filtered[df_sp_filtered.NAME != 'UNNAMED']
 # filter for HIMAWARI FOV
@@ -149,16 +151,17 @@ df_all['ISO_DATE'] = df_all['ISO_TIME'].dt.date
 df_all = df_all[(df_all['ISO_DATE'] >= datetime(2015, 7, 7).date()) & (df_all['ISO_DATE'] <= datetime(2022, 12, 12).date())]
 df_all['ISO_TIME'] = _
 
-# Sample based on intensity
-df_all['USA_SSHS'] = df_all['USA_SSHS'].astype(int)
-max_intensity = df_all['USA_SSHS'].max()
-print(f"Maximum intensity in the dataset: {max_intensity}") 
-# pick 10 storms with intensity > 4  
-intense_storms = df_all[df_all['USA_SSHS'] > 4].SID.unique()
-print(f"Number of storms with intensity > 4: {len(intense_storms)}")
-# sample storms based on intensity
-sampled_storms = df_all[df_all.SID.isin(intense_storms)]
+# # Sample based on intensity
+# df_all['USA_SSHS'] = df_all['USA_SSHS'].astype(int)
+# max_intensity = df_all['USA_SSHS'].max()
+# print(f"Maximum intensity in the dataset: {max_intensity}") 
+# # pick 10 storms with intensity > 4  
+# intense_storms = df_all[df_all['USA_SSHS'] > 4].SID.unique()
+# print(f"Number of storms with intensity > 4: {len(intense_storms)}")
+# # sample storms based on intensity
+# sampled_storms = df_all[df_all.SID.isin(intense_storms)]
 
+sampled_storms = df_all
 
 SIDs = sampled_storms.SID.unique()
 sum_df = pd.DataFrame(columns=['start', 'files', 'data_format', 'satellite', 'date', 'domain', 'LAT', 'LON', 'SID'])
@@ -188,7 +191,7 @@ for sid in tqdm(SIDs):
     sum_df = pd.concat([sum_df, ahi_df])
 
 # Save the summary DataFrame to a CSV file
-sum_df.to_csv('jasmin.himawari_intense_ibtracs.SP-WP.list.v04r01.csv', index=False)
+sum_df.to_csv('jasmin.himawari_ibtracs-[2020-2022].SP-WP.list.v04r01.csv', index=False)
 
 logger.info(f"Filtering test set...")
 

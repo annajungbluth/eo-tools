@@ -1,5 +1,6 @@
 #!/home/users/annaju/miniforge3/envs/jasmin-env/bin/python
 import pathlib
+import tempfile
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -7,6 +8,7 @@ import argparse
 from loguru import logger
 from google.cloud import storage
 import os
+import ast
 
 import s3fs
 import argparse
@@ -159,7 +161,9 @@ def get_ahi_x_y(
     )
 
 def get_himawari_image(
-    files: str,)-> xr.Dataset:
+    files: str,
+    satpy_tmp_dir: str | None = None,
+)-> xr.Dataset:
     """
     Get the HIMAWARI image for a given timestamp.
 
@@ -175,21 +179,37 @@ def get_himawari_image(
         "cache_type": "blockcache",  # block cache stores blocks of fixed size and uses eviction using a LRU strategy.
         "block_size": 8 * 1024 * 1024 # size in bytes per block, adjust depends on the file size but the recommended size is in the MB}
     }
-    # Load with satpy
-    scn = Scene(
-        [f's3://{f}' for f in files], # select all files at one time
-        reader="ahi_hsd", 
-        reader_kwargs=dict(storage_options = {'anon': True}), 
-    )
-    # load available datasets
-    scn.load(scn.all_dataset_names())
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_files = []
+        for file_path in files:
+            remote_path = str(file_path)
+            if remote_path.startswith('s3://'):
+                remote_path = remote_path[5:]
 
-    # Resample to 2km resolution
-    new_scn = scn.resample(scn.coarsest_area(), resampler='native')
+            local_path = pathlib.Path(tmpdir) / pathlib.Path(remote_path).name
+            fs.get(remote_path, str(local_path))
+            local_files.append(str(local_path))
 
-    # Convert to xarray
-    ds = new_scn.to_xarray()
-    return ds
+        # Load with satpy using local copies because this reader uses built-in open().
+        scn = Scene(
+            local_files,
+            reader="ahi_hsd",
+            reader_kwargs=dict(
+                storage_options={
+                    'anon': True,
+                    'default_block_size': 100*1024*1024,  # 100MB blocks for large files
+                    'default_cache_type': 'readahead',     # Optimize for sequential reading
+                }
+        ))
+        # load available datasets
+        scn.load(scn.all_dataset_names())
+
+        # Resample to 2km resolution
+        new_scn = scn.resample(scn.coarsest_area(), resampler='native')
+
+        # Convert to xarray
+        ds = new_scn.to_xarray()
+        return ds
 
 def get_himawari_patch(
     lat: float, lon: float, dataset: xr.Dataset, patch_size: int
@@ -207,10 +227,11 @@ def get_himawari_patch(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num", type=int, required=True, help="The row to process from the HIMAWARI file")
-    parser.add_argument("--HIMAWARI-file", type=str, default="./files/pretraining-test-himawari-[2020-2022]-with-additional-variables.csv", help="Path to the file containing all the files to process")    
+    parser.add_argument("--num", type=int, default=0, help="The row to process from the HIMAWARI file")
+    parser.add_argument("--HIMAWARI-file", type=str, default="/home/users/annaju/eo-tools/scripts/files/pretraining-test-himawari-[2020-2022]-with-additional-variables.csv", help="Path to the file containing all the files to process")    
     parser.add_argument("--patch_size", type=int, default=256, help="Size of the patch to extract from the HIMAWARI dataset")   
     parser.add_argument("--save_path", type=str, default="/home/users/annaju/data/clouds/himawari-8/", help="Path to save the processed HIMAWARI patches")    
+    parser.add_argument("--satpy_tmp_dir", type=str, default="/home/users/annaju/data/satpy_tmp", help="Directory for Satpy temporary unzipped files")
     parser.add_argument("--cyclone", type=bool, default=False, help="Whether to add the storm_id to the name")
     args = parser.parse_args()
     
@@ -251,10 +272,10 @@ if __name__ == "__main__":
             patch_filename = f'{time_str}_[{lat_str}_{lon_str}]_patch.nc'
         save_file_name = save_path / patch_filename
 
-        ahi_file = row['ahi_file']
+        ahi_files = ast.literal_eval(row['ahi_file'])
 
-        logger.info(f"Loading HIMAWARI image {ahi_file}...")
-        ds = get_himawari_image(file=ahi_file)
+        # logger.info(f"Loading HIMAWARI image {ahi_file}...")
+        ds = get_himawari_image(files=ahi_files, satpy_tmp_dir=args.satpy_tmp_dir)
         logger.info(f"Extracting patch ...")
         ds_patch = get_himawari_patch(lat, lon, ds, args.patch_size)
 
