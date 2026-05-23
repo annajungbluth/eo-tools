@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --account=eo_shared_data 
+#SBATCH --partition=standard 
+#SBATCH --qos=short
+#SBATCH --time=00:15:00
+#SBATCH --mem=8000
+#SBATCH --job-name=process_himawari_vars
+#SBATCH -o /home/users/annaju/logs/data/slurm-%A_%a.o
+#SBATCH --array=0-2322
+
+OFFSET=0
+
+num=$(( ${SLURM_ARRAY_TASK_ID} + $OFFSET ))
+
+echo "Running process_himawari_vars with num $num"
+
+# set up run with num argument
+./process_himawari_vars.py --num $num --HIMAWARI-file /home/users/annaju/eo-tools/scripts/files/pretraining-test-himawari-cyclones-[2020-2021]-with-additional-variables.csv \
+    --save_path /home/users/annaju/data/cyclones/himawari-8/ \
+    --patch_size 256 \
+    --cyclone True
