@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH --account=eo_shared_data
+#SBATCH --partition=standard
+#SBATCH --qos=short
+#SBATCH --time=00:15:00
+#SBATCH --mem=8000
+#SBATCH --job-name=process_msg_vars
+#SBATCH -o /home/users/annaju/logs/data/slurm-%A_%a.o
+#SBATCH --array=2000-2019
+
+OFFSET=0
+
+num=$(( ${SLURM_ARRAY_TASK_ID} + $OFFSET ))
+
+echo "Running process_msg_vars with num $num"
+
+# set up run with num argument
+./process_msg_vars.py --num $num

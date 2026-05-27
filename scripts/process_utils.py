@@ -1,16 +1,16 @@
-import numpy as np
-from datetime import datetime, timedelta
-from loguru import logger
-import tempfile
-import zipfile
-from satpy import Scene
 import pathlib
-import pandas as pd
-
-from pyproj import Proj
-import xarray as xr
-
+import tempfile
 import warnings
+import zipfile
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+from loguru import logger
+from pyproj import Proj
+from satpy import Scene
+
 warnings.simplefilter("ignore")
 
 GOES_WAVELENGTHS = {
@@ -245,6 +245,7 @@ HIMAWARI_WAVELENGTHS = {
     },
 }
 
+
 def random_date(start, end):
     """
     Generate a random datetime between two datetime objects.
@@ -252,6 +253,7 @@ def random_date(start, end):
     delta = end - start
     random_days = np.random.randint(0, delta.days + 1)
     return start + timedelta(days=random_days)
+
 
 def random_time(start, end):
     """
@@ -262,27 +264,37 @@ def random_time(start, end):
     random_minutes = np.random.randint(start_minutes, end_minutes + 1)
     return datetime(2000, 1, 1, random_minutes // 60, random_minutes % 60, 0)
 
+
 def random_datetime(start, end):
     """
     Generate a random datetime between two datetime objects.
     """
     random_date_value = random_date(start, end)
-    random_time_value = random_time(datetime(2000, 1, 1, 0, 0, 0), datetime(2000, 1, 1, 23, 59, 00))
-    return datetime(random_date_value.year, random_date_value.month, random_date_value.day,
-                    random_time_value.hour, random_time_value.minute, random_time_value.second)
+    random_time_value = random_time(
+        datetime(2000, 1, 1, 0, 0, 0), datetime(2000, 1, 1, 23, 59, 00)
+    )
+    return datetime(
+        random_date_value.year,
+        random_date_value.month,
+        random_date_value.day,
+        random_time_value.hour,
+        random_time_value.minute,
+        random_time_value.second,
+    )
+
 
 def create_fov_mask(shape, fov_radius, patch_shape=None):
     """
     Function to create mask for specified field of view.
     """
     # Create coordinate grids
-    y, x = np.ogrid[:shape[0], :shape[1]]
+    y, x = np.ogrid[: shape[0], : shape[1]]
     # Calculate center points
     center_y, center_x = shape[0] // 2, shape[1] // 2
     # Calculate distance from center for each point
-    dist_from_center = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+    dist_from_center = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
     # Normalize distances by max possible distance (corner to center)
-    max_dist = np.sqrt((center_x)**2 + (center_y)**2)
+    max_dist = np.sqrt((center_x) ** 2 + (center_y) ** 2)
     normalized_dist = dist_from_center / max_dist
     # Create mask for specified field of view
     mask = normalized_dist <= fov_radius
@@ -302,6 +314,7 @@ def create_fov_mask(shape, fov_radius, patch_shape=None):
         mask = mask & patch_mask
     return mask
 
+
 def check_quality_flags_goes(ds):
     """
     Function to check quality flags in GOES data.
@@ -313,14 +326,18 @@ def check_quality_flags_goes(ds):
     """
     # Check each channel individually - exit early if bad quality found
     for i in range(1, 17):
-        if (ds[f'DQF_C{i:02d}'] > 0).any().item():
+        if (ds[f"DQF_C{i:02d}"] > 0).any().item():
             logger.info(f"Did not pass quality check for channel DQF_C{i:02d}.")
             return False
-        
+
     # If we get here, all channels passed the quality check
     # Also check whether there are any NaN or inf values in the dataset
-    if np.isnan(ds.x).any() or np.isinf(ds.x).any() or \
-       np.isnan(ds.y).any() or np.isinf(ds.y).any():
+    if (
+        np.isnan(ds.x).any()
+        or np.isinf(ds.x).any()
+        or np.isnan(ds.y).any()
+        or np.isinf(ds.y).any()
+    ):
         logger.info("Dataset contains NaN or inf values in x or y.")
         return False
     # Check if any channels have NaN values
@@ -329,6 +346,7 @@ def check_quality_flags_goes(ds):
             logger.info(f"Dataset contains NaN values in channel {channel}.")
             return False
     return True
+
 
 def check_quality_flags_msg(ds, min_valid_fraction=0.999):
     """
@@ -342,18 +360,19 @@ def check_quality_flags_msg(ds, min_valid_fraction=0.999):
     Returns:
         bool: True if the dataset passes the quality check, False otherwise.
     """
-    channels=[
-            'IR_016',
-            'IR_039',
-            'IR_087',
-            'IR_097',
-            'IR_108',
-            'IR_120',
-            'IR_134',
-            'VIS006',
-            'VIS008',
-            'WV_062',
-            'WV_073']
+    channels = [
+        "IR_016",
+        "IR_039",
+        "IR_087",
+        "IR_097",
+        "IR_108",
+        "IR_120",
+        "IR_134",
+        "VIS006",
+        "VIS008",
+        "WV_062",
+        "WV_073",
+    ]
     # OPTION 1:
     # # create a mask where the latitude value is inf
     # mask_lat = ~np.isinf(ds.latitude)
@@ -361,7 +380,7 @@ def check_quality_flags_msg(ds, min_valid_fraction=0.999):
     # # combine both masks to find all points with valid lat/lon values
     # mask = mask_lat & mask_lon
     # valid_pixels = np.count_nonzero(mask)
-    
+
     # # loop through each channel to check for NaN values
     # for channel in channels:
     #     # Check for NaN only where mask is True, i.e. where the lat/lon values are valid
@@ -376,16 +395,21 @@ def check_quality_flags_msg(ds, min_valid_fraction=0.999):
 
     # OPTION 2:
     # check if any coordinates are NaN or inf
-    if np.isnan(ds.latitude).any() or np.isinf(ds.latitude).any() or \
-       np.isnan(ds.longitude).any() or np.isinf(ds.longitude).any():
+    if (
+        np.isnan(ds.latitude).any()
+        or np.isinf(ds.latitude).any()
+        or np.isnan(ds.longitude).any()
+        or np.isinf(ds.longitude).any()
+    ):
         return False
-    
+
     # loop through each channel to check for NaN values
     for channel in channels:
-        # check if any values in the channel are NaN
+        # check if any values in the channel are NaN
         if np.isnan(ds[channel].values).any():
             return False
     return True
+
 
 def check_quality_flags_himawari(ds, min_valid_fraction=0.999):
     """
@@ -399,24 +423,25 @@ def check_quality_flags_himawari(ds, min_valid_fraction=0.999):
     Returns:
         bool: True if the dataset passes the quality check, False otherwise.
     """
-    channels=[
-            'B01',
-            'B02',
-            'B03',
-            'B04',
-            'B05',
-            'B06',
-            'B07',
-            'B08',
-            'B09',
-            'B10',
-            'B11',
-            'B12',
-            'B13',
-            'B14',
-            'B15',
-            'B16',]
-    
+    channels = [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B09",
+        "B10",
+        "B11",
+        "B12",
+        "B13",
+        "B14",
+        "B15",
+        "B16",
+    ]
+
     ## OPTION 1:
     # # create a mask where the latitude value is inf
     # mask_lat = ~np.isinf(ds.latitude)
@@ -438,37 +463,49 @@ def check_quality_flags_himawari(ds, min_valid_fraction=0.999):
 
     ## OPTION 2:
     # check if any coordinates are NaN or inf
-    if np.isnan(ds.latitude).any() or np.isinf(ds.latitude).any() or \
-       np.isnan(ds.longitude).any() or np.isinf(ds.longitude).any():
+    if (
+        np.isnan(ds.latitude).any()
+        or np.isinf(ds.latitude).any()
+        or np.isnan(ds.longitude).any()
+        or np.isinf(ds.longitude).any()
+    ):
         return False
-    
+
     # loop through each channel to check for NaN values
     for channel in channels:
-        # check if any values in the channel are NaN
+        # check if any values in the channel are NaN
         if np.isnan(ds[channel].values).any():
             return False
     return True
 
-class CenterWeightedCropDatasetEditor():
+
+class CenterWeightedCropDatasetEditor:
     def __init__(self, patch_shape, satellite, fov_radius=0.6, max_attempts=10):
         self.satellite = satellite
         self.patch_shape = patch_shape
         self.fov_radius = fov_radius
         self.max_attempts = max_attempts
+
     def __call__(self, ds):
-        assert ds['x'].shape[0] >= self.patch_shape[0], 'Invalid dataset shape: %s' % str(ds['x'].shape)
-        assert ds['y'].shape[0] >= self.patch_shape[1], 'Invalid dataset shape: %s' % str(ds['y'].shape)
+        assert (
+            ds["x"].shape[0] >= self.patch_shape[0]
+        ), "Invalid dataset shape: %s" % str(ds["x"].shape)
+        assert (
+            ds["y"].shape[0] >= self.patch_shape[1]
+        ), "Invalid dataset shape: %s" % str(ds["y"].shape)
 
         # get x/y grid
-        x_grid, y_grid = np.meshgrid(np.arange(0, ds.x.shape[0], 1), np.arange(0, ds.y.shape[0], 1))
+        x_grid, y_grid = np.meshgrid(
+            np.arange(0, ds.x.shape[0], 1), np.arange(0, ds.y.shape[0], 1)
+        )
 
         # create mask for valid coordinates within desired field of view
-        # NOTE: This masks from the center to the image edge, rather than disk edge
+        # NOTE: This masks from the center to the image edge, rather than disk edge
         valid_mask = create_fov_mask(
-            shape=(ds.x.shape[0], ds.y.shape[0]), 
+            shape=(ds.x.shape[0], ds.y.shape[0]),
             fov_radius=self.fov_radius,
-            patch_shape=self.patch_shape
-            )
+            patch_shape=self.patch_shape,
+        )
 
         # get coordinate pairs for valid points
         coords_on_disk = np.column_stack((x_grid[valid_mask], y_grid[valid_mask]))
@@ -486,14 +523,18 @@ class CenterWeightedCropDatasetEditor():
             ymax = y + self.patch_shape[1] // 2
 
             # crop patch
-            patch_ds = ds.sel({'x': slice(ds['x'][xmin], ds['x'][xmax - 1]),
-                                'y': slice(ds['y'][ymin], ds['y'][ymax - 1])})
+            patch_ds = ds.sel(
+                {
+                    "x": slice(ds["x"][xmin], ds["x"][xmax - 1]),
+                    "y": slice(ds["y"][ymin], ds["y"][ymax - 1]),
+                }
+            )
             # check data quality flags
-            if self.satellite.lower() == 'goes':
+            if self.satellite.lower() == "goes":
                 quality = check_quality_flags_goes(patch_ds)
-            elif self.satellite.lower() == 'msg':
+            elif self.satellite.lower() == "msg":
                 quality = check_quality_flags_msg(patch_ds)
-            elif self.satellite.lower() == 'himawari':
+            elif self.satellite.lower() == "himawari":
                 quality = check_quality_flags_himawari(patch_ds)
             else:
                 raise ValueError(f"Unknown satellite type: {self.satellite}")
@@ -502,14 +543,18 @@ class CenterWeightedCropDatasetEditor():
                 # logger.info('Found patch with bad quality flags, trying again ...')
                 # try new set of indices
                 attempts += 1
-                continue   
+                continue
             else:
                 # exit loop and return patch
                 return patch_ds, xmin, ymin
 
-        logger.info('Could not find patch without bad quality flags after %d cropping attempts' % self.max_attempts)
-        return None
-    
+        logger.info(
+            "Could not find patch without bad quality flags after %d cropping attempts"
+            % self.max_attempts
+        )
+        return None, None, None
+
+
 def read_zipped_msg(filename, channels=None):
     """
     Function to read a zipped MSG file and return an xarray Dataset.
@@ -523,19 +568,19 @@ def read_zipped_msg(filename, channels=None):
     """
     if channels is None:
         channels = [
-            'IR_016',
-            'IR_039',
-            'IR_087',
-            'IR_097',
-            'IR_108',
-            'IR_120',
-            'IR_134',
-            'VIS006',
-            'VIS008',
-            'WV_062',
-            'WV_073'
+            "IR_016",
+            "IR_039",
+            "IR_087",
+            "IR_097",
+            "IR_108",
+            "IR_120",
+            "IR_134",
+            "VIS006",
+            "VIS008",
+            "WV_062",
+            "WV_073",
         ]
-    
+
     zf = zipfile.ZipFile(filename)
 
     with tempfile.TemporaryDirectory() as tempdir:
@@ -564,6 +609,7 @@ def encode_and_clip(da, min, max, target_dtype, chunksizes={}, **encoding_kwargs
 
     return da
 
+
 def encoding_attrs(valid_range, input_dtype, target_dtype):
     valid_range = np.array(valid_range, dtype=input_dtype)
     range = valid_range.max() - valid_range.min()
@@ -575,16 +621,15 @@ def encoding_attrs(valid_range, input_dtype, target_dtype):
             scale_factor=input_dtype(range / (max_value - 1)),
             add_offset=input_dtype(-valid_range.min()),
             _FillValue=max_value,
-            dtype=str(target_dtype.__name__), 
+            dtype=str(target_dtype.__name__),
         )
     elif np.issubdtype(target_dtype, np.integer):
         return dict(
             scale_factor=input_dtype(range / max_value),
             add_offset=input_dtype(-valid_range.min()),
             _FillValue=min_value,
-            dtype=str(target_dtype.__name__), 
+            dtype=str(target_dtype.__name__),
         )
-    
 
 
 def get_satellite_viewing_angles(
@@ -652,6 +697,7 @@ def get_satellite_viewing_angles(
     )
 
     return zenith_angle, azimuth_angle
+
 
 def get_sza_and_azi(
     date: datetime, lat: np.ndarray, lon: np.ndarray
@@ -733,6 +779,7 @@ def get_sza_and_azi(
 
     return np.degrees(solar_zenith_angle), np.degrees(solar_azimuth_angle)
 
+
 def get_abi_proj(dataset: xr.Dataset) -> Proj:
     """
     Return a pyproj projection from the information contained within an ABI file
@@ -744,6 +791,7 @@ def get_abi_proj(dataset: xr.Dataset) -> Proj:
         lat_0=dataset.goes_imager_projection.latitude_of_projection_origin,
         sweep=dataset.goes_imager_projection.sweep_angle_axis,
     )
+
 
 def get_abi_lat_lon(
     dataset: xr.Dataset, dtype: type = float
