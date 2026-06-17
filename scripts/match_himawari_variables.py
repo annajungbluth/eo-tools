@@ -114,13 +114,7 @@ def _himawari_file_df(
     # ----------------------------
     files = []
     path = f"{satellite}/AHI-L1b-{domain}/{query_dt.year}/{query_dt.month:02d}/{query_dt.day:02d}/{query_dt.hour:02d}{query_dt.minute:02d}"
-    if ignore_missing is True:
-        try:
-            files += fs.ls(path, refresh=refresh)
-        except FileNotFoundError:
-            print(f"Ignored missing dir: {path}")
-    else:
-        files += fs.ls(path, refresh=refresh)
+    files += _list_s3_path(path, refresh=refresh, ignore_missing=ignore_missing)
 
     # Build a table of the files
     # --------------------------
@@ -269,6 +263,8 @@ def _himawari_l2_df(
             .loc[:, 0]
             .str.rsplit("_", expand=True)
         )
+        variable_mapping = {"CHGT": "HEIGHT", "CMSK": "MASK", "CPHS": "PHASE"}
+        df["variable"] = df["variable"].map(variable_mapping).fillna(df["variable"])
         df["datetime"] = pd.to_datetime(df.date + df.time, format="%Y%j%H%M")
     elif len(df["file"].iloc[0].split("/")[-1].split(".")[0].split("_")) == 10:
         df[
@@ -292,6 +288,8 @@ def _himawari_l2_df(
             .loc[:, 0]
             .str.rsplit("_", expand=True)
         )
+        variable_mapping = {"CHGT": "HEIGHT", "CMSK": "MASK", "CPHS": "PHASE"}
+        df["variable"] = df["variable"].map(variable_mapping).fillna(df["variable"])
         df["datetime"] = pd.to_datetime(df.date + df.time, format="%Y%j%H%M")
     elif len(df["file"].iloc[0].split("/")[-1].split(".")[0].split("_")) == 6:
         df[["satellite-product", "version", "satellite", "start", "end", "xxx"]] = (
@@ -333,7 +331,7 @@ def get_correct_files(files, query_dt):
         files["diff"] = abs(pd.to_datetime(files["time"]) - query_dt)
         correct_files = files[files["diff"] == files["diff"].min()]
         if check_time_in_range(pd.to_datetime(correct_files["time"]), query_dt):
-            return correct_files["file"]
+            return correct_files
         else:
             return None
 
@@ -357,7 +355,7 @@ def get_correct_l2_file(files, variable):
 def main():
     # -------------------------------------------------------------------------------------------
     # VARIABLES TO UPDATE:
-    path = './files/tmp-himawari-[2023-2025].csv"'
+    path = './files/tmp-himawari-[2023-2025].csv'
     save_path = "matched-himawari-[2023-2025]-with-additional-variables.csv"
     # -------------------------------------------------------------------------------------------
 
