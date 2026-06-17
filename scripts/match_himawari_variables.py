@@ -299,7 +299,7 @@ def main():
         # Check AHI files
         try:
             ahi_files = _himawari_file_df(
-                "noaa-himawari8", 
+                "noaa-himawari8", # TODO: UPDATE THIS!
                 "FLDK", 
                 query_dt,
                 ignore_missing=True,
@@ -318,7 +318,7 @@ def main():
         # Cloud products at 2 km
         try:
             cloud_files_ = _himawari_l2_df(
-                "noaa-himawari8", 
+                "noaa-himawari8", # TODO: UPDATE THIS!
                 "Clouds",
                 query_dt, 
                 level='L2', 

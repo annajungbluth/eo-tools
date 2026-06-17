@@ -82,7 +82,7 @@ def get_correct_files(files, query_dt):
         files["diff"] = abs(pd.to_datetime(files["time"]) - query_dt)
         correct_files = files[files["diff"] == files["diff"].min()]
         if check_time_in_range(pd.to_datetime(correct_files["time"]), query_dt):
-            return correct_files["file"]
+            return correct_files
         else:
             return None
 
@@ -309,7 +309,7 @@ def get_available_himawari_times(
     ):
         try:
             ahi_df = _himawari_file_df(
-                "noaa-himawari8",
+                satellite,
                 "FLDK",
                 query_dt,
                 ignore_missing=True,
@@ -327,19 +327,23 @@ def get_available_himawari_times(
                 logger.warning(f"No AHI files found within 2 minutes of {query_dt}")
                 ahi_df = pd.DataFrame()
 
+        if ahi_df.empty:
+            continue
+
         assert (
             len(ahi_df["time"].unique()) == 1
         )  # Check that there is only one unique timestamp
 
-        if len(ahi_df["files"].tolist()) >= 16:
+        if len(ahi_df["file"].tolist()) >= 16:
             rows.append(
                 {
                     "start": ahi_df["time"].iloc[0],
-                    "files": ahi_df["files"].tolist(),
+                    "files": ahi_df["file"].tolist(),
                     "data_format": ahi_df["data_format"].iloc[0],
                     "satellite": ahi_df["satellite"].iloc[0],
                     "query_dt": query_dt,
                     "domain": ahi_df["domain"].iloc[0],
+                    "date": ahi_df["date"].iloc[0],
                 }
             )
 
