@@ -355,7 +355,9 @@ def get_available_himawari_times(
 tc_all = pd.read_csv(
     "./files/matched-ibtracs-himawari-[2023-2025].csv"
 )  # TODO: UPDATE THESE!
-save_path = "matched-himawari-[2023-2025].csv"
+save_path = "tmp-himawari-[2023-2025].csv"
+
+fast_compile = True
 # -------------------------------------------------------------------------------------------
 
 tc_all["ISO_TIME"] = pd.to_datetime(tc_all["ISO_TIME"])
@@ -366,21 +368,32 @@ logger.info(
 
 SIDs = tc_all.SID.unique()
 
-sum_df = pd.DataFrame(
-    columns=[
-        "start",
-        "files",
-        "data_format",
-        "satellite",
-        "date",
-        "domain",
-        "LAT",
-        "LON",
-        "SID",
-        "NAME",
-        "USA_ATCF_ID",
-    ]
-)
+if fast_compile:
+    sum_df = pd.DataFrame(
+        columns=[
+            "start",
+            "satellite",
+            "LAT",
+            "LON",
+            "SID",
+            "NAME",
+            "USA_ATCF_ID",
+        ]
+    )
+else:
+    sum_df = pd.DataFrame(
+        columns=[
+            "start",
+            "satellite",
+            "date",
+            "domain",
+            "LAT",
+            "LON",
+            "SID",
+            "NAME",
+            "USA_ATCF_ID",
+        ]
+    )
 
 for sid in tqdm(SIDs):
     # Get the tropical cyclone track
@@ -397,13 +410,23 @@ for sid in tqdm(SIDs):
     # Interpolate the track
     f_lat, f_lon = interpolate_track(latitudes, longitudes, timestamps)
 
-    # Get available HIMAWARI times
-
-    ahi_df = get_available_himawari_times(
-        start=pd.to_datetime(timestamps.min()),
-        end=pd.to_datetime(timestamps.max()),
-        satellite=satellite,
-    )
+    if fast_compile:  # Fill in dataset without querying the actual files
+        ahi_df = pd.DataFrame()
+        ahi_df["start"] = list(
+            pd.date_range(
+                start=pd.to_datetime(timestamps.min()).floor("10min"),
+                end=pd.to_datetime(timestamps.max()).ceil("10min"),
+                freq="10min",
+            )
+        )
+        ahi_df["satellite"] = [satellite] * len(ahi_df)
+    else:
+        # Get available HIMAWARI times
+        ahi_df = get_available_himawari_times(
+            start=pd.to_datetime(timestamps.min()),
+            end=pd.to_datetime(timestamps.max()),
+            satellite=satellite,
+        )
 
     interpolated_latitudes = []
     interpolated_longitudes = []
