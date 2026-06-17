@@ -1,35 +1,43 @@
-import os 
-import pandas as pd
-import goes2go
+import os
 from datetime import datetime, timedelta
-from tqdm import tqdm
+
+import goes2go
+import pandas as pd
 from loguru import logger
+from tqdm import tqdm
 
+# -------------------------------------------------------------------------------------------
+# VARIABLES TO UPDATE:
+path = "/home/users/annaju/eo-tools/scripts/files/matched-goes-west-[2023-2025].csv"
+save_path = "/home/users/annaju/eo-tools/scripts/matched-goes-west-[2023-2025]-with-additional-variables.csv"
+# -------------------------------------------------------------------------------------------
 
-path = './files/pretraining-test-goes-cyclones-[2023-2024].csv'
 df = pd.read_csv(path)
 df_copy = df.copy()
 
 logger.info(f"Loaded dataframe with {len(df)} rows from {path}")
 
-if 'start' in df.columns:
-    df['date'] = pd.to_datetime(df['start'])
+if "start" in df.columns:
+    df["date"] = pd.to_datetime(df["start"])
+
 
 def check_time_in_range(dt, query_dt, delta_minutes=2):
     start_dt = query_dt - timedelta(minutes=delta_minutes)
     end_dt = query_dt + timedelta(minutes=delta_minutes)
     return start_dt <= dt <= end_dt
 
+
 def get_correct_file(files, query_dt):
     if len(files) == 0:
         return None
     else:
-        files['diff'] = abs(pd.to_datetime(files['start']) - query_dt)
-        correct_file = files.loc[files['diff'].idxmin()]
-        if check_time_in_range(pd.to_datetime(correct_file['start']), query_dt):
-            return correct_file['file']
+        files["diff"] = abs(pd.to_datetime(files["start"]) - query_dt)
+        correct_file = files.loc[files["diff"].idxmin()]
+        if check_time_in_range(pd.to_datetime(correct_file["start"]), query_dt):
+            return correct_file["file"]
         else:
             return None
+
 
 abi_list = []
 acha_list = []
@@ -42,18 +50,19 @@ cps_list = []
 all_available = []
 
 for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-    query_dt = pd.to_datetime(row['date'])
+    query_dt = pd.to_datetime(row["date"])
     start_dt = query_dt - timedelta(minutes=10)
     end_dt = query_dt + timedelta(minutes=10)
+    satellite = row["satellite"]
 
     # Check ABI files
     try:
         abi_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=start_dt, 
+            satellite=satellite,
+            start=start_dt,
             end=end_dt,
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-MCMIP",
         )
     except ValueError as e:
@@ -65,11 +74,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud height at 2 km
     try:
         acha_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-ACHA2KMF",
         )
     except ValueError as e:
@@ -81,11 +90,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud pressure at 2 km
     try:
         achp_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-ACHP2KMF",
         )
     except ValueError as e:
@@ -97,11 +106,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud optical depth at 2 km
     try:
         cod_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-COD2KMF",
         )
     except ValueError as e:
@@ -113,11 +122,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud temperature at 2 km
     try:
         acht_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-ACHTF",
         )
     except ValueError as e:
@@ -129,11 +138,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Clear sky mask at 2 km
     try:
         acm_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-ACMF",
         )
     except ValueError as e:
@@ -145,11 +154,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud phase at 2 km
     try:
         actp_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-ACTPF",
         )
     except ValueError as e:
@@ -161,11 +170,11 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     # Cloud particle size at 2 km
     try:
         cps_files = goes2go.goes_timerange(
-            satellite='noaa-goes16',
-            start=query_dt - timedelta(minutes=10), 
+            satellite=satellite,
+            start=query_dt - timedelta(minutes=10),
             end=query_dt + timedelta(minutes=10),
             download=False,
-            domain='F',
+            domain="F",
             product="ABI-L2-CPSF",
         )
     except ValueError as e:
@@ -174,21 +183,31 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
     cps_file = get_correct_file(cps_files, query_dt)
     cps_list.append(cps_file)
 
-    if all([abi_file, acha_file, achp_file, cod_file, acht_file, acm_file, actp_file, cps_file]):
+    if all(
+        [
+            abi_file,
+            acha_file,
+            achp_file,
+            cod_file,
+            acht_file,
+            acm_file,
+            actp_file,
+            cps_file,
+        ]
+    ):
         all_available.append(True)
     else:
         all_available.append(False)
 
-df_copy['abi_file'] = abi_list
-df_copy['acha_file'] = acha_list
-df_copy['achp_file'] = achp_list
-df_copy['cod_file'] = cod_list
-df_copy['acht_file'] = acht_list
-df_copy['acm_file'] = acm_list
-df_copy['actp_file'] = actp_list
-df_copy['cps_file'] = cps_list
-df_copy['all_available'] = all_available
+df_copy["abi_file"] = abi_list
+df_copy["acha_file"] = acha_list
+df_copy["achp_file"] = achp_list
+df_copy["cod_file"] = cod_list
+df_copy["acht_file"] = acht_list
+df_copy["acm_file"] = acm_list
+df_copy["actp_file"] = actp_list
+df_copy["cps_file"] = cps_list
+df_copy["all_available"] = all_available
 
-save_path = './files/pretraining-test-goes-cyclones-[2023-2024]-with-additional-variables.csv'
 
 df_copy.to_csv(save_path, index=False)
