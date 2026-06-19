@@ -1,18 +1,27 @@
 #!/bin/bash
-#SBATCH --account=eo_shared_data 
-#SBATCH --partition=standard 
+#SBATCH --account=eo_shared_data
+#SBATCH --partition=standard
 #SBATCH --qos=short
 #SBATCH --time=00:15:00
 #SBATCH --mem=8000
 #SBATCH --job-name=process_goes_vars
 #SBATCH -o /home/users/annaju/logs/slurm-%A_%a.o
-#SBATCH --array=0-1792
+#SBATCH --array=0-1000
 
-OFFSET=0
+DATASET_SIZE=39700
+OFFSET=50790
 
-num=$(( ${SLURM_ARRAY_TASK_ID} + $OFFSET ))
+# Use an affine permutation to spread task IDs across the full dataset range.
+# MULTIPLIER must be coprime with DATASET_SIZE to avoid collisions.
+MULTIPLIER=35111
+
+task_id=${SLURM_ARRAY_TASK_ID}
+num=$(( (task_id * MULTIPLIER + OFFSET) % DATASET_SIZE ))
 
 echo "Running process_goes_vars with num $num"
 
 # set up run with num argument
-./process_goes_vars.py --num $num
+./process_goes_vars.py --num $num --GOES_file /home/users/annaju/eo-tools/scripts/files/matched-filtered-goes-west-[2023-2025]-with-additional-variables.csv \
+    --save_path /home/users/annaju/data/esl2026/goes-west/ \
+    --patch_size 512 \
+    --cyclone True

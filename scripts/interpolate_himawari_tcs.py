@@ -408,6 +408,7 @@ for sid in tqdm(SIDs):
     usa_atcf_id = tc_all[tc_all.SID == sid]["USA_ATCF_ID"].unique()[0]
 
     # Interpolate the track
+    # TODO: There is a bug in the interpolation track over the longitude -180/+180 line that needs fixing
     f_lat, f_lon = interpolate_track(latitudes, longitudes, timestamps)
 
     if fast_compile:  # Fill in dataset without querying the actual files

@@ -331,7 +331,7 @@ def get_correct_files(files, query_dt):
         files["diff"] = abs(pd.to_datetime(files["time"]) - query_dt)
         correct_files = files[files["diff"] == files["diff"].min()]
         if check_time_in_range(pd.to_datetime(correct_files["time"]), query_dt):
-            return correct_files
+            return correct_files["file"].tolist()
         else:
             return None
 
@@ -355,20 +355,20 @@ def get_correct_l2_file(files, variable):
 def main():
     # -------------------------------------------------------------------------------------------
     # VARIABLES TO UPDATE:
-    path = './files/tmp-himawari-[2023-2025].csv'
+    path = "./files/tmp-himawari-[2023-2025].csv"
     save_path = "matched-himawari-[2023-2025]-with-additional-variables.csv"
     # -------------------------------------------------------------------------------------------
 
     df = pd.read_csv(path)
     df_copy = df.copy()
 
-    logger.info(f"Loaded dataframe with {len(df)} rows from {path}")
+    logger.info(f"Loaded dataframe with {len(df_copy)} rows from {path}")
 
-    if "start" in df.columns:
-        df["date"] = pd.to_datetime(df["start"])
+    if "start" in df_copy.columns:
+        df_copy["date"] = pd.to_datetime(df_copy["start"])
 
     results_by_time = {}
-    times = pd.to_datetime(df["date"])
+    times = pd.to_datetime(df_copy["date"])
 
     for i, query_dt in tqdm(enumerate(times), total=len(times)):
         satellite = (
@@ -428,7 +428,7 @@ def main():
             "all_available": has_ahi_files and has_l2_files,
         }
 
-    mapped_results = pd.to_datetime(df["date"]).map(results_by_time)
+    mapped_results = pd.to_datetime(df_copy["date"]).map(results_by_time)
     df_copy["ahi_file"] = mapped_results.map(
         lambda x: x["ahi_file"] if isinstance(x, dict) else None
     )

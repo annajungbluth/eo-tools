@@ -606,7 +606,6 @@ def encode_and_clip(da, min, max, target_dtype, chunksizes={}, **encoding_kwargs
     for enc_key in da.encoding:
         _ = da.attrs.pop(enc_key, None)
     da.data = np.clip(da.data, *da.valid_range)
-
     return da
 
 
