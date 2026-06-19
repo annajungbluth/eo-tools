@@ -2,14 +2,10 @@
 import argparse
 import os
 import pathlib
-import tempfile
-import zipfile
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from google.cloud import storage
 from loguru import logger
 from process_utils import (
     CenterWeightedCropDatasetEditor,
@@ -17,7 +13,6 @@ from process_utils import (
     get_sza_and_azi,
     read_zipped_msg,
 )
-from satpy import Scene
 
 # MSG wavelengths in nanometers
 MSG_WAVELENGTHS = {

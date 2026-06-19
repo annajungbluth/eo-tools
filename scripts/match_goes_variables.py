@@ -1,5 +1,4 @@
-import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import goes2go
 import pandas as pd
@@ -65,7 +64,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-MCMIP",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ABI files for {query_dt}")
         abi_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     abi_file = get_correct_file(abi_files, query_dt)
@@ -81,7 +80,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-ACHA2KMF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ACHA files for {query_dt}")
         acha_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acha_file = get_correct_file(acha_files, query_dt)
@@ -97,7 +96,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-ACHP2KMF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ACHP files for {query_dt}")
         achp_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     achp_file = get_correct_file(achp_files, query_dt)
@@ -113,7 +112,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-COD2KMF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching COD files for {query_dt}")
         cod_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     cod_file = get_correct_file(cod_files, query_dt)
@@ -129,7 +128,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-ACHTF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ACHT files for {query_dt}")
         acht_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acht_file = get_correct_file(acht_files, query_dt)
@@ -145,7 +144,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-ACMF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ACM files for {query_dt}")
         acm_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     acm_file = get_correct_file(acm_files, query_dt)
@@ -161,7 +160,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-ACTPF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching ACTP files for {query_dt}")
         actp_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     actp_file = get_correct_file(actp_files, query_dt)
@@ -177,7 +176,7 @@ for index, row in tqdm(df.iterrows(), total=df.shape[0]):
             domain="F",
             product="ABI-L2-CPSF",
         )
-    except ValueError as e:
+    except ValueError:
         logger.error(f"Error fetching CPS files for {query_dt}")
         cps_files = pd.DataFrame()  # Create an empty DataFrame to avoid further errors
     cps_file = get_correct_file(cps_files, query_dt)

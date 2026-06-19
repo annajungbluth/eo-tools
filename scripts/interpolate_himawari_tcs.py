@@ -1,23 +1,11 @@
-import argparse
-import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import fsspec
-import goes2go
-import matplotlib as mpl
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import s3fs
-import xarray as xr
 
 # from goes2go.himawari_data import _himawari_file_df
 from loguru import logger
-from matplotlib.collections import LineCollection
-from pyproj import Proj
 from scipy.interpolate import UnivariateSpline
 from tqdm import tqdm
 

@@ -3,27 +3,20 @@ import argparse
 import ast
 import os
 import pathlib
-import tempfile
 
 import fsspec
-import goes2go
 import numpy as np
 import pandas as pd
-import s3fs
 import xarray as xr
-from google.cloud import storage
 from loguru import logger
 from process_utils import (
     HIMAWARI_WAVELENGTHS,
     encode_and_clip,
-    get_abi_lat_lon,
     get_satellite_viewing_angles,
     get_sza_and_azi,
 )
 from pyproj import Proj
 from satpy import Scene
-from scipy.interpolate import make_splrep
-from tqdm import tqdm
 
 fs = fsspec.filesystem("s3", anon=True)
 fsspec_caching = {
@@ -414,7 +407,7 @@ if __name__ == "__main__":
         ds_patch["optical_depth"] = ds_var_patch["CldOptDpth"]
         logger.info(f"Added cloud optical depth ...")
 
-        # Add cloud top temprature
+        # Add cloud top temperature
         ds_patch["temperature"] = ds_var_patch["CldTopTemp"]
         logger.info(f"Added cloud top temperature ...")
 

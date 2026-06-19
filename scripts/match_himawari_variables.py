@@ -1,11 +1,8 @@
-import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import lru_cache
 
-import goes2go
 import pandas as pd
 import s3fs
-import satpy
 from loguru import logger
 from tqdm import tqdm
 

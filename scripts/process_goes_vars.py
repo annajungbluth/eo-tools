@@ -1,16 +1,11 @@
 #!/home/users/annaju/miniforge3/envs/jasmin-env/bin/python
 import argparse
-import ast
-import os
 import pathlib
 
 import fsspec
-import goes2go
 import numpy as np
 import pandas as pd
-import s3fs
 import xarray as xr
-from google.cloud import storage
 from loguru import logger
 from process_utils import (
     GOES_WAVELENGTHS,
@@ -20,8 +15,6 @@ from process_utils import (
     get_sza_and_azi,
 )
 from pyproj import Proj
-from scipy.interpolate import make_splrep
-from tqdm import tqdm
 
 GOES_EAST_PROJ4 = "+proj=geos +lon_0=-75 +h=35786023 +x_0=0 +y_0=0 +sweep=x +datum=WGS84 +units=m +no_defs"
 
@@ -371,7 +364,7 @@ if __name__ == "__main__":
         ds_patch["particle_size_DQF"] = ds_var_patch["DQF"]
         logger.info(f"Added cloud particle size ...")
 
-        # Add cloud top temprature
+        # Add cloud top temperature
         ds_var = get_goes_image(file=row["acht_file"])
         ds_var_patch = get_goes_patch(lat, lon, ds_var, args.patch_size)
         ds_patch["temperature"] = ds_var_patch["TEMP"]
