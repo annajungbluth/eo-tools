@@ -6,7 +6,7 @@
 #SBATCH --mem=8000
 #SBATCH --job-name=process_himawari_vars
 #SBATCH -o /home/users/annaju/logs/data/slurm-%A_%a.o
-#SBATCH --array=0-1000
+#SBATCH --array=0-500
 
 DATASET_SIZE=75900
 OFFSET=50790
