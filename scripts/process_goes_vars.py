@@ -3,6 +3,7 @@ import argparse
 import pathlib
 
 import fsspec
+import os
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -24,6 +25,76 @@ goes_satellite_latitude = 0  # in degrees
 
 
 def reprocess_goes(ds, time, chunksize, **encoding_kwargs):
+    def _prepare_aux_var(var: xr.DataArray, dtype) -> xr.DataArray:
+        """Normalize auxiliary variable dims and dtype before assigning to output dataset."""
+        da = var.astype(dtype)
+
+        # Avoid merge conflicts when auxiliary variables carry their own geolocation coords.
+        drop_coord_names = [
+            name
+            for name in ("latitude", "longitude", "Latitude", "Longitude")
+            if name in da.coords
+        ]
+        if drop_coord_names:
+            da = da.reset_coords(names=drop_coord_names, drop=True)
+
+        rename_map = {}
+        for old_dim, new_dim in (
+            ("Rows", "y"),
+            ("Columns", "x"),
+            ("rows", "y"),
+            ("columns", "x"),
+            ("row", "y"),
+            ("col", "x"),
+        ):
+            if old_dim in da.dims and new_dim not in da.dims:
+                rename_map[old_dim] = new_dim
+
+        if rename_map:
+            da = da.rename(rename_map)
+
+        squeeze_dims = [
+            dim
+            for dim in da.dims
+            if dim not in ("y", "x") and da.sizes.get(dim, 0) == 1
+        ]
+        if squeeze_dims:
+            da = da.squeeze(dim=squeeze_dims, drop=True)
+
+        return da
+
+    def _encode_categorical_var(
+        var: xr.DataArray,
+        min_value: int,
+        max_value: int,
+        target_dtype,
+        chunksizes,
+    ) -> xr.DataArray:
+        """Encode categorical/integer flags as compact integers (no scale/offset)."""
+        da = _prepare_aux_var(var, np.float32)
+        fill_value = np.iinfo(target_dtype).max
+
+        da = da.where(np.isfinite(da))
+        da = da.clip(min_value, max_value).round()
+        da = da.fillna(fill_value).astype(target_dtype)
+        da = da.reset_encoding()
+
+        da.attrs.update(valid_range=[target_dtype(min_value), target_dtype(max_value)])
+        da.encoding.update(
+            dict(dtype=target_dtype.__name__, _FillValue=target_dtype(fill_value))
+        )
+
+        chunks = [
+            chunksizes[dim] if dim in chunksizes else da[dim].size for dim in da.dims
+        ]
+        da.encoding.update(dict(chunksizes=chunks, preferred_chunks=chunksizes))
+        da.encoding.update(encoding_kwargs)
+
+        for enc_key in list(da.encoding):
+            _ = da.attrs.pop(enc_key, None)
+
+        return da
+
     # Load and stack data vars and apply quality flags
     data = xr.concat(
         (ds[var] for var in GOES_WAVELENGTHS.keys()), dim="channel"
@@ -100,73 +171,43 @@ def reprocess_goes(ds, time, chunksize, **encoding_kwargs):
     )
 
     # Reprocess additional variables without encoding and clipping
-    new_ds["height"] = xr.DataArray(
-        ds.height.data.astype(np.float32), dims=("y", "x"), attrs=ds.height.attrs
-    )
-    new_ds["height_DQF"] = xr.DataArray(
-        ds.height_DQF.data.astype(np.int8), dims=("y", "x"), attrs=ds.height_DQF.attrs
-    )
+    # Reprocess additional geophysical variables.
+    float_var_specs = {
+        "height": (0, 20000),
+        "optical_depth": (0, 160),
+        "temperature": (180, 340),
+        "pressure": (0, 1100),
+        "particle_size": (0, 160)
+    }
+    for var_name, (vmin, vmax) in float_var_specs.items():
+        new_ds[var_name] = _prepare_aux_var(ds[var_name], np.float32)
+        new_ds[var_name] = encode_and_clip(
+            new_ds[var_name],
+            vmin,
+            vmax,
+            np.uint16,
+            {"x": chunksize, "y": chunksize},
+            **encoding_kwargs,
+        )
 
-    new_ds["optical_depth"] = xr.DataArray(
-        ds.optical_depth.data.astype(np.float32),
-        dims=("y", "x"),
-        attrs=ds.optical_depth.attrs,
-    )
-    new_ds["optical_depth_DQF"] = xr.DataArray(
-        ds.optical_depth_DQF.data.astype(np.int8),
-        dims=("y", "x"),
-        attrs=ds.optical_depth_DQF.attrs,
-    )
+    chunk_map = {"x": chunksize, "y": chunksize}
 
-    new_ds["mask_binary"] = xr.DataArray(
-        ds.mask_binary.data.astype(np.int8), dims=("y", "x"), attrs=ds.mask_binary.attrs
-    )
-    new_ds["mask_advanced"] = xr.DataArray(
-        ds.mask_advanced.data.astype(np.int8),
-        dims=("y", "x"),
-        attrs=ds.mask_advanced.attrs,
-    )
-    new_ds["mask_DQF"] = xr.DataArray(
-        ds.mask_DQF.data.astype(np.int8), dims=("y", "x"), attrs=ds.mask_DQF.attrs
-    )
-
-    new_ds["particle_size"] = xr.DataArray(
-        ds.particle_size.data.astype(np.float32),
-        dims=("y", "x"),
-        attrs=ds.particle_size.attrs,
-    )
-    new_ds["particle_size_DQF"] = xr.DataArray(
-        ds.particle_size_DQF.data.astype(np.int8),
-        dims=("y", "x"),
-        attrs=ds.particle_size_DQF.attrs,
-    )
-
-    new_ds["temperature"] = xr.DataArray(
-        ds.temperature.data.astype(np.float32),
-        dims=("y", "x"),
-        attrs=ds.temperature.attrs,
-    )
-    new_ds["temperature_DQF"] = xr.DataArray(
-        ds.temperature_DQF.data.astype(np.int8),
-        dims=("y", "x"),
-        attrs=ds.temperature_DQF.attrs,
-    )
-
-    new_ds["phase"] = xr.DataArray(
-        ds.phase.data.astype(np.float32), dims=("y", "x"), attrs=ds.phase.attrs
-    )
-    new_ds["phase_DQF"] = xr.DataArray(
-        ds.phase_DQF.data.astype(np.int8), dims=("y", "x"), attrs=ds.phase_DQF.attrs
-    )
-
-    new_ds["pressure"] = xr.DataArray(
-        ds.pressure.data.astype(np.float32), dims=("y", "x"), attrs=ds.pressure.attrs
-    )
-    new_ds["pressure_DQF"] = xr.DataArray(
-        ds.pressure_DQF.data.astype(np.int8),
-        dims=("y", "x"),
-        attrs=ds.pressure_DQF.attrs,
-    )
+    int_var_specs = {
+        "height_DQF": (0, 3, np.uint8),
+        "optical_depth_DQF": (0, 16, np.uint8),
+        "mask_binary": (0, 1, np.uint8),
+        "mask_advanced": (0, 3, np.uint8),
+        "mask_DQF": (0, 6, np.uint8),
+        "particle_size_DQF": (0, 16, np.uint8),
+        "temperature_DQF": (0, 3, np.uint8),
+        "phase": (0, 5, np.uint8),
+        "phase_DQF": (0, 63, np.uint8),
+        "pressure_DQF": (0, 3, np.uint8),
+    }
+    for var_name, (vmin, vmax, dtype) in int_var_specs.items():
+        new_ds[var_name] = _encode_categorical_var(
+            ds[var_name], vmin, vmax, dtype, chunk_map
+        )
 
     # drop all coordinates except for ['x', 'y', 't'] and the channel coordinate
     coords_to_drop = [
@@ -316,7 +357,14 @@ if __name__ == "__main__":
             patch_filename = (
                 f"{time_str}_[{lat_str}_{lon_str}]_{args.patch_size}_patch.nc"
             )
-        save_file_name = save_path / patch_filename
+
+        if args.cyclone:
+            save_path = os.path.join(save_path, storm_id)
+
+        os.makedirs(save_path, exist_ok=True)
+
+        save_file_name = os.path.join(save_path, patch_filename)
+
 
         abi_file = row["abi_file"]
 

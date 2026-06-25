@@ -5,26 +5,20 @@
 #SBATCH --time=00:15:00
 #SBATCH --mem=8000
 #SBATCH --job-name=process_himawari_vars
-#SBATCH -o /home/users/annaju/logs/data/slurm-%A_%a.o
-#SBATCH --array=0-500
+#SBATCH -o /home/users/annaju/logs/him/slurm-%x-%A_%a.o
+#SBATCH --array=0-9999
 
-DATASET_SIZE=75900
-OFFSET=50790
-
-# Use an affine permutation to spread task IDs across the full dataset range.
-# MULTIPLIER must be coprime with DATASET_SIZE to avoid collisions.
-MULTIPLIER=35111
+# OFFSET must be provided at submission time via:
+# sbatch --export=ALL,OFFSET=<value> process_himawari_vars.batch
+: "${OFFSET:?OFFSET is required. Submit with --export=ALL,OFFSET=<value>}"
 
 task_id=${SLURM_ARRAY_TASK_ID}
-num=$(( (task_id * MULTIPLIER + OFFSET) % DATASET_SIZE ))
-
-echo "Running process_himawari_vars with num $num"
-# num=$(( ${SLURM_ARRAY_TASK_ID} + $OFFSET ))
+num=$(( (task_id + OFFSET)))
 
 echo "Running process_himawari_vars with num $num"
 
 # set up run with num argument
 ./process_himawari_vars.py --num $num --HIMAWARI-file /home/users/annaju/eo-tools/scripts/files/matched-filtered-himawari-[2023-2025]-with-additional-variables.csv \
-    --save_path /home/users/annaju/data/esl2026/himawari/ \
+    --save_path /gws/ssde/j25a/ai4er/users/esl2026/datasets/himawari/ \
     --patch_size 512 \
     --cyclone True

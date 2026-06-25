@@ -66,6 +66,38 @@ def reprocess_himawari(ds, time, chunksize, **encoding_kwargs):
 
         return da
 
+    def _encode_categorical_var(
+        var: xr.DataArray,
+        min_value: int,
+        max_value: int,
+        target_dtype,
+        chunksizes,
+    ) -> xr.DataArray:
+        """Encode categorical/integer flags as compact integers (no scale/offset)."""
+        da = _prepare_aux_var(var, np.float32)
+        fill_value = np.iinfo(target_dtype).max
+
+        da = da.where(np.isfinite(da))
+        da = da.clip(min_value, max_value).round()
+        da = da.fillna(fill_value).astype(target_dtype)
+        da = da.reset_encoding()
+
+        da.attrs.update(valid_range=[target_dtype(min_value), target_dtype(max_value)])
+        da.encoding.update(
+            dict(dtype=target_dtype.__name__, _FillValue=target_dtype(fill_value))
+        )
+
+        chunks = [
+            chunksizes[dim] if dim in chunksizes else da[dim].size for dim in da.dims
+        ]
+        da.encoding.update(dict(chunksizes=chunks, preferred_chunks=chunksizes))
+        da.encoding.update(encoding_kwargs)
+
+        for enc_key in list(da.encoding):
+            _ = da.attrs.pop(enc_key, None)
+
+        return da
+
     # Load and stack data vars and apply quality flags
     data = xr.concat(
         (ds[var] for var in HIMAWARI_WAVELENGTHS.keys()), dim="channel"
@@ -144,25 +176,41 @@ def reprocess_himawari(ds, time, chunksize, **encoding_kwargs):
         **encoding_kwargs,
     )
 
-    # Reprocess additional variables without encoding and clipping
-    new_ds["height"] = _prepare_aux_var(ds.height, np.float32)
-    new_ds["height_DQF"] = _prepare_aux_var(ds.height_DQF, np.int8)
+    # Reprocess additional geophysical variables.
+    float_var_specs = {
+        "height": (0, 20000),
+        "optical_depth": (0, 20),
+        # "temperature": (100, 450),
+        "temperature": (180, 340),
+        # "pressure": (0, 1500),
+        "pressure": (0, 1100),
+    }
+    for var_name, (vmin, vmax) in float_var_specs.items():
+        new_ds[var_name] = _prepare_aux_var(ds[var_name], np.float32)
+        new_ds[var_name] = encode_and_clip(
+            new_ds[var_name],
+            vmin,
+            vmax,
+            np.uint16,
+            {"x": chunksize, "y": chunksize},
+            **encoding_kwargs,
+        )
 
-    new_ds["optical_depth"] = _prepare_aux_var(ds.optical_depth, np.float32)
+    chunk_map = {"x": chunksize, "y": chunksize}
 
-    new_ds["mask_binary"] = _prepare_aux_var(ds.mask_binary, np.int8)
-    new_ds["mask_advanced"] = _prepare_aux_var(ds.mask_advanced, np.int8)
-    new_ds["mask_DQF"] = _prepare_aux_var(ds.mask_DQF, np.int8)
-
-    new_ds["temperature"] = _prepare_aux_var(ds.temperature, np.float32)
-
-    new_ds["phase"] = _prepare_aux_var(ds.phase, np.float32)
-    new_ds["phase_DQF"] = _prepare_aux_var(ds.phase_DQF, np.int8)
-
-    new_ds["pressure"] = _prepare_aux_var(ds.pressure, np.float32)
-
-    new_ds["type"] = _prepare_aux_var(ds.type, np.int8)
-
+    int_var_specs = {
+        "height_DQF": (0, 4, np.uint8),
+        "mask_binary": (0, 1, np.uint8),
+        "mask_advanced": (0, 3, np.uint8),
+        "mask_DQF": (0, 6, np.uint8),
+        "phase": (0, 5, np.uint8),
+        "phase_DQF": (0, 1, np.uint8),
+        "type": (0, 8, np.uint8),
+    }
+    for var_name, (vmin, vmax, dtype) in int_var_specs.items():
+        new_ds[var_name] = _encode_categorical_var(
+            ds[var_name], vmin, vmax, dtype, chunk_map
+        )
     # drop all coordinates except for ['x', 'y', 't'] and the channel coordinate
 
     coords_to_drop = [
@@ -332,21 +380,25 @@ if __name__ == "__main__":
         time = pd.to_datetime(row["date"])
         time_str = pd.to_datetime(row["date"]).strftime("%Y%m%d%H%M%S")
 
-        # Create output directory if it doesn't exist
-        save_path = pathlib.Path(args.save_path)
-        # save_path = pathlib.Path(f"./{time_str}")
-        os.makedirs(save_path, exist_ok=True)
-
         lat_str = f"{lat:+.3f}deg"
         lon_str = f"{lon:+.3f}deg"
 
         if args.cyclone:
             storm_id = row["usa_atcf_id"]
-            patch_filename = f"{time_str}_{storm_id}_[{lat_str}_{lon_str}]_{args.patch_size}_patch.nc"
+            patch_filename = f" {time_str}_{storm_id}_[{lat_str}_{lon_str}]_{args.patch_size}_patch.nc"
         else:
             patch_filename = (
                 f"{time_str}_[{lat_str}_{lon_str}]_{args.patch_size}_patch.nc"
             )
+
+        # Create output directory if it doesn't exist
+        save_path = pathlib.Path(args.save_path)
+        # save_path = pathlib.Path(f"./{time_str}")
+        if args.cyclone:
+            save_path = os.path.join(save_path, storm_id)
+
+        os.makedirs(save_path, exist_ok=True)
+
         save_file_name = save_path / patch_filename
 
         ahi_files = ast.literal_eval(row["ahi_file"])
